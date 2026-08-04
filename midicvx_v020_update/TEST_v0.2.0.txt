@@ -1,0 +1,19 @@
+MIDICVX v0.2.0 — Playback pass-through test
+
+This build intentionally adds NO arpeggiator or new Program-button behavior.
+It only routes MIDI Note On/Off through playback.c and then immediately into
+the original MidiCv functions.
+
+Expected behavior:
+- Program button behaves exactly like stock firmware.
+- MIDI CV and gates behave exactly like stock firmware.
+- MIDI clock output behaves exactly like stock firmware.
+- Power cycling does not change playback behavior.
+
+Build for DIP ATmega328P:
+  make clean && make MCU=atmega328p
+
+Flash DIP ATmega328P:
+  avrdude -c usbasp -p m328p -B 100 -U flash:w:build/midi_cv_x.hex:i
+
+Do not change fuses for this test.

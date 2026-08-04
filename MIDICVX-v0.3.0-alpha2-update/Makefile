@@ -2,14 +2,11 @@
 ## Milestone v0.1: stock runtime behavior + future-safe project foundation.
 
 TARGET   := midi_cv_x
-MCU ?= atmega328
-
+MCU      ?= atmega328
 ifeq ($(MCU),atmega328p)
   AVR_PART := m328p
-else ifeq ($(MCU),atmega328)
-  AVR_PART := m328
 else
-  $(error Unsupported MCU '$(MCU)'; use atmega328 or atmega328p)
+  AVR_PART := m328
 endif
 
 SRCS     := $(wildcard *.c)

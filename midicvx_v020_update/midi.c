@@ -228,12 +228,19 @@ void Midi_ExecuteMessage(midi_msg_t *msg)
 		
 	
 	switch(msg->type) {
-			case MIDI__CLOCK:
-			/* External transport input owns the former CLOCK OUT jack. */
+		case MIDI__CLOCK:
 			if(clk_state) {
 				clk_cnt++;
-				if(clk_cnt >= 6)
+				
+				if(clk_cnt == 1) {
+					CLK_OUT_PORT |= CLK_OUT_PIN;
+					g_midi_clk_timeout = g_time;
+				}
+				else if(clk_cnt == 3)
+					CLK_OUT_PORT &= ~CLK_OUT_PIN;
+				else if(clk_cnt >= 6)
 					clk_cnt = 0;
+					
 			}
 			break;
 			
@@ -248,14 +255,15 @@ void Midi_ExecuteMessage(midi_msg_t *msg)
 			
 		case MIDI__STOP:
 			clk_state = 0;
+			CLK_OUT_PORT &= ~CLK_OUT_PIN;
 			break;
 			
 		case MIDI__NOTE_OFF:
-			Playback_NoteOff(msg);
+			Playback_NoteOff(msg->channel, msg->data1);
 			break;
 
 		case MIDI__NOTE_ON:
-			Playback_NoteOn(msg);
+			Playback_NoteOn(msg->channel, msg->data1, msg->data2);
 			break;
 			
 		case MIDI__PITCH_BEND:

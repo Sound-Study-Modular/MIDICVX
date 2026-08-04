@@ -33,7 +33,7 @@ int main(void)
 	UART_Init();
 	DAC_Init();
 	DAC_Config();
-	Transport_Init();
+	ClockOut_Init();
 	MidiCv_Init();
 	Playback_Init();
 	Switch_Init();
@@ -77,8 +77,6 @@ int main(void)
 	
     while (1) 
     {
-		Transport_Process();
-
 		// Read voice switch
 		MidiCv_SetVoices((VOICE_SW_PORT_IN & VOICE_SW_PIN) == 0);
 		
@@ -99,6 +97,11 @@ int main(void)
 			}
 		}
 		
+		
+		if(g_midi_clk_timeout != 0 && (g_time - g_midi_clk_timeout) > 1000) {
+			g_midi_clk_timeout = 0;
+			CLK_OUT_PORT &= ~CLK_OUT_PIN;
+		}
 		
 		if(g_btn.press) {
 			g_btn.press = 0;

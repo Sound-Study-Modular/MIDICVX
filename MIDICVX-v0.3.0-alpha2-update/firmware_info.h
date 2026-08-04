@@ -5,7 +5,7 @@
 #include <avr/pgmspace.h>
 
 #define MIDICVX_VERSION_MAJOR 0
-#define MIDICVX_VERSION_MINOR 4
+#define MIDICVX_VERSION_MINOR 3
 #define MIDICVX_VERSION_PATCH 0
 #define MIDICVX_HW_REVISION   1
 

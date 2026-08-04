@@ -22,6 +22,7 @@ volatile uint32_t		g_midi_clk_timeout;
 int main(void)
 {
 	uint32_t led_time = 0;
+	uint8_t playback_button_candidate = 0;
 	
 	const uint8_t pattern_calib_len[] = { 4, 2 };
 	const uint32_t pattern_calib[2][4] = {{40, 960, 0, 0 }, { 40, 200, 40, 720 }};
@@ -33,9 +34,8 @@ int main(void)
 	UART_Init();
 	DAC_Init();
 	DAC_Config();
-	Transport_Init();
+	ClockOut_Init();
 	MidiCv_Init();
-	Playback_Init();
 	Switch_Init();
 	Button_Init();
 	Led_Init();
@@ -47,6 +47,9 @@ int main(void)
 	
 	// Initialize MIDI parser
 	Midi_Init(&g_midi_parser);
+
+	// Initialize MIDICVX playback router (LIVE mode)
+	Playback_Init();
 	
 	g_btn.port = &BUTTON_PORT_IN;
 	g_btn.pin = BUTTON_PIN;
@@ -77,8 +80,6 @@ int main(void)
 	
     while (1) 
     {
-		Transport_Process();
-
 		// Read voice switch
 		MidiCv_SetVoices((VOICE_SW_PORT_IN & VOICE_SW_PIN) == 0);
 		
@@ -92,7 +93,9 @@ int main(void)
 			Blinker_Process(pattern_config[g_config_mode-1], pattern_config_len[g_config_mode-1]);
 			
 		} else {
-			if(led_time != 0 && (g_time - led_time) > 5) {
+			if(Playback_GetMode() == PLAYBACK_MODE_ARP_UP) {
+				MIDI_LED_HIGH();
+			} else if(led_time != 0 && (g_time - led_time) > 5) {
 				led_time = 0;
 				
 				MIDI_LED_LOW();
@@ -100,29 +103,38 @@ int main(void)
 		}
 		
 		
+		if(g_midi_clk_timeout != 0 && (g_time - g_midi_clk_timeout) > 1000) {
+			g_midi_clk_timeout = 0;
+			CLK_OUT_PORT &= ~CLK_OUT_PIN;
+		}
+		
 		if(g_btn.press) {
 			g_btn.press = 0;
 			g_btn_press_time = g_time;
 			
 			if(g_calib_mode == 1) {
+				playback_button_candidate = 0;
 				g_calib_mode = 2;
 			} else if(g_calib_mode == 2) {
+				playback_button_candidate = 0;
 				g_calib_mode = 0;
 				
 				Dac_MidiCalibSave();
 				MidiCv_Reset();
 				MIDI_LED_LOW();
 			} else if(g_config_mode == 1) {
+				playback_button_candidate = 0;
 				g_config_mode = 2;
 				
 			} else if(g_config_mode == 2) {
+				playback_button_candidate = 0;
 				g_config_mode = 0;	
 				
 				MidiCv_ConfigSave();
 				MidiCv_Reset();
 				MIDI_LED_LOW();
 			} else {
-				MidiCv_Reset();
+				playback_button_candidate = 1;
 			}
 
 			//MIDI_LED_HIGH();
@@ -130,16 +142,21 @@ int main(void)
 		
 		if(g_btn.release) {
 			g_btn.release = 0;
+
+			if(playback_button_candidate && !g_calib_mode && !g_config_mode && g_btn_press_time != 0) {
+				Playback_ToggleMode();
+				led_time = 0;
+			}
+
+			playback_button_candidate = 0;
 			g_btn_press_time = 0;
-			
-			//MIDI_LED_LOW();
-			
 		}
 		
 		
 		// Button hold
 		if(g_btn_press_time != 0 && (g_time - g_btn_press_time) > 3000) {
 			g_btn_press_time = 0;
+			playback_button_candidate = 0;
 			
 			g_config_mode = 1;
 		}

@@ -251,11 +251,11 @@ void Midi_ExecuteMessage(midi_msg_t *msg)
 			break;
 			
 		case MIDI__NOTE_OFF:
-			Playback_NoteOff(msg);
+			Playback_NoteOff(msg->channel, msg->data1);
 			break;
 
 		case MIDI__NOTE_ON:
-			Playback_NoteOn(msg);
+			Playback_NoteOn(msg->channel, msg->data1, msg->data2);
 			break;
 			
 		case MIDI__PITCH_BEND:

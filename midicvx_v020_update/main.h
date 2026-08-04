@@ -10,7 +10,6 @@
 #include <avr/power.h>
 #include "hardware.h"
 #include <util/delay.h>
-#include <util/atomic.h>
 #include <util/setbaud.h>
 #include <avr/eeprom.h>
 #include <avr/interrupt.h>
@@ -27,7 +26,6 @@
 #include "firmware_info.h"
 #include "settings_layout.h"
 #include "playback.h"
-#include "transport.h"
 
 #define DAC_I2C_ADDR	0xC0	//was 0xC0
 
