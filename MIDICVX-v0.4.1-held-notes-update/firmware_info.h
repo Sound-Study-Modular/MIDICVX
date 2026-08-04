@@ -6,7 +6,7 @@
 
 #define MIDICVX_VERSION_MAJOR 0
 #define MIDICVX_VERSION_MINOR 4
-#define MIDICVX_VERSION_PATCH 2
+#define MIDICVX_VERSION_PATCH 1
 #define MIDICVX_HW_REVISION   1
 
 /* Reserve the top 4 KiB for a future MIDI/audio update bootloader. */

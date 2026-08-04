@@ -4,20 +4,16 @@
 #include <stdint.h>
 #include "midi.h"
 
-typedef enum
-{
-    PLAYBACK_MODE_LIVE = 0,
-    PLAYBACK_MODE_ARP_UP = 1
-} playback_mode_t;
-
+/*
+ * MIDICVX held-note/playback layer.
+ *
+ * Velocity 0 means the MIDI note is not currently held. The table is indexed
+ * directly by MIDI note number (0..127), so duplicate Note On messages cannot
+ * create duplicate entries and Note Off removal is constant-time.
+ */
 void Playback_Init(void);
-void Playback_SetMode(playback_mode_t mode);
-playback_mode_t Playback_GetMode(void);
-void Playback_ToggleMode(void);
-
 void Playback_NoteOn(const midi_msg_t *msg);
 void Playback_NoteOff(const midi_msg_t *msg);
-void Playback_TransportTick(void);
 
 uint8_t Playback_GetHeldCount(void);
 uint8_t Playback_IsNoteHeld(uint8_t note);
