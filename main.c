@@ -79,6 +79,7 @@ int main(void)
     while (1) 
     {
 		Transport_Process();
+		Playback_Process();
 
 		// Read voice switch
 		MidiCv_SetVoices((VOICE_SW_PORT_IN & VOICE_SW_PIN) == 0);
@@ -96,7 +97,7 @@ int main(void)
 			if(led_time != 0 && (g_time - led_time) > 5) {
 				led_time = 0;
 				
-				MIDI_LED_LOW();
+				// MIDI_LED_LOW();
 			}
 		}
 		
@@ -115,7 +116,7 @@ int main(void)
 
 				Dac_MidiCalibSave();
 				MidiCv_Reset();
-				MIDI_LED_LOW();
+				// MIDI_LED_LOW();
 			} else if(g_config_mode == 1) {
 				button_press_consumed = 1;
 				g_config_mode = 2;
@@ -125,18 +126,18 @@ int main(void)
 
 				MidiCv_ConfigSave();
 				MidiCv_Reset();
-				MIDI_LED_LOW();
+				// MIDI_LED_LOW();
 			}
 		}
 
 		if(g_btn.release) {
 			g_btn.release = 0;
 
-			/* A short press toggles LIVE <-> ARP UP. A long press is
+			/* A short press advances the playback mode. A long press is
 			 * consumed by the existing configuration-mode handler below. */
 			if(g_btn_press_time != 0U && button_press_consumed == 0U &&
 			   g_calib_mode == 0U && g_config_mode == 0U) {
-				Playback_ToggleMode();
+				Playback_NextMode();
 			}
 
 			g_btn_press_time = 0;
@@ -157,7 +158,7 @@ int main(void)
 				
 				if(g_midi_parser.msg.channel != 0) {
 					led_time = g_time;
-					MIDI_LED_HIGH();
+					// MIDI_LED_HIGH();
 				}
 				
 				if(g_calib_mode) {

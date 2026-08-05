@@ -7,13 +7,19 @@
 typedef enum
 {
     PLAYBACK_MODE_LIVE = 0,
-    PLAYBACK_MODE_ARP_UP = 1
+    PLAYBACK_MODE_ARP_UP,
+    PLAYBACK_MODE_ARP_DOWN,
+    PLAYBACK_MODE_ARP_PINGPONG,
+    PLAYBACK_MODE_ARP_RANDOM,
+    PLAYBACK_MODE_ARP_ORDER_PLAYED,
+    PLAYBACK_MODE_COUNT
 } playback_mode_t;
 
 void Playback_Init(void);
+void Playback_Process(void);
 void Playback_SetMode(playback_mode_t mode);
 playback_mode_t Playback_GetMode(void);
-void Playback_ToggleMode(void);
+void Playback_NextMode(void);
 
 void Playback_NoteOn(const midi_msg_t *msg);
 void Playback_NoteOff(const midi_msg_t *msg);

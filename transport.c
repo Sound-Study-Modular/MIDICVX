@@ -48,7 +48,7 @@ void Transport_Process(void)
 
     if(pending != 0U) {
         /* Lower status/MIDI LED shows each qualified transport burst. */
-        MIDI_LED_HIGH();
+        // MIDI_LED_HIGH();
         transport_led_until = g_time + TRANSPORT_LED_HOLD_MS;
         transport_led_active = 1U;
 
@@ -60,7 +60,7 @@ void Transport_Process(void)
 
     if(transport_led_active != 0U &&
        (int32_t)(g_time - transport_led_until) >= 0) {
-        MIDI_LED_LOW();
+        // MIDI_LED_LOW();
         transport_led_active = 0U;
     }
 }
