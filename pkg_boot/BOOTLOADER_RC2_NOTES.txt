@@ -1,0 +1,7 @@
+MIDICVX Bootloader RC2
+- Application + bootloader install is now a single ISP flash session to avoid erasing one image while writing the other.
+- Explicit ATmega328P and ATmega328 build targets.
+- 4 KiB boot section at 0x7000.
+- Fuse targets: LFUSE FF, HFUSE D8, EFUSE FD (effective BOD bits 0x05).
+- Audio update remains CLOCK jack -> PC1/ADC1.
+- Same WAV format is shared by 328 and 328P application updates.

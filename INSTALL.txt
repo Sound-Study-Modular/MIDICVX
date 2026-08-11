@@ -1,0 +1,25 @@
+MIDICVX v0.8.0 — CV1 LIVE + CV2 ARP
+
+Replace these files in ~/Desktop/foundation:
+  main.c
+  playback.c
+  playback.h
+  firmware_info.h
+
+Commands:
+  cd ~/Desktop/foundation
+  cp main.c main.c.v080-backup
+  cp playback.c playback.c.v080-backup
+  cp playback.h playback.h.v080-backup
+  cp firmware_info.h firmware_info.h.v080-backup
+
+  cp ~/Downloads/MIDICVX-v0.8.0-CV1-live-CV2-arp/main.c .
+  cp ~/Downloads/MIDICVX-v0.8.0-CV1-live-CV2-arp/playback.c .
+  cp ~/Downloads/MIDICVX-v0.8.0-CV1-live-CV2-arp/playback.h .
+  cp ~/Downloads/MIDICVX-v0.8.0-CV1-live-CV2-arp/firmware_info.h .
+
+  make clean
+  make
+
+Flash:
+  avrdude -c usbasp -p m328p -U flash:w:build/midi_cv_x.hex:i

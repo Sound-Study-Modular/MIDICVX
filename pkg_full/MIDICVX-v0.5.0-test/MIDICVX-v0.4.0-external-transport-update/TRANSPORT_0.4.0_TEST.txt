@@ -1,0 +1,34 @@
+MIDICVX 0.4.0 — EXTERNAL TRANSPORT INPUT TEST
+
+What changed
+------------
+- The former CLOCK OUT jack is now a clock/trigger INPUT.
+- PC1 / PCINT9 detects rising edges.
+- The front-panel LED physically connected to the clock jack should follow
+  the raw incoming pulse.
+- The lower MIDI/status LED flashes for about 25 ms for every qualified
+  rising edge accepted by the transport engine.
+- CV, Gate, Program-button, calibration, and normal MIDI note behavior remain
+  pass-through/stock.
+- MIDI clock no longer drives the clock jack in this test build.
+
+How to test
+-----------
+1. Patch a clock or trigger signal into the former CLOCK OUT jack.
+2. Start slowly, around 1–4 pulses per second.
+3. Expected:
+   - Clock-jack LED follows each incoming high pulse.
+   - Lower MIDI/status LED gives one visible flash per rising edge.
+4. Try a Eurorack clock, trigger output, square-wave LFO, or 5 V logic clock.
+
+Input compatibility
+-------------------
+The existing PCB protection/conditioning around the jack remains in circuit.
+Start with 5 V pulses. Eurorack 8–10 V clock/gate signals should be clamped by
+that existing circuit. Lower-voltage 3.3 V clocks may work, but must be tested;
+do not assume compatibility until the lower status LED confirms detection.
+
+Important
+---------
+Do not connect two active outputs together. In this firmware the jack is an
+input, so do not feed MIDI clock out expectations into it.

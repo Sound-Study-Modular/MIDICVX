@@ -1,0 +1,54 @@
+MIDICVX v1.0.0 RC1 — final application + panic + audio bootloader test
+
+APPLICATION PANIC
+-----------------
+1. Flash the application normally first (before bootloader fuses).
+2. Hold MIDI notes so gates are active.
+3. Hold PROGRAM continuously for 8 seconds.
+4. The lower red LED flashes three times.
+5. Both gate outputs must be LOW and all held-note/arp state must be cleared.
+6. The mode, arp algorithm, and learned split must be unchanged after panic.
+
+BOOTLOADER BUILD
+----------------
+cd ~/Desktop/foundations/bootloader
+make clean
+make MCU=atmega328p
+
+The build MUST report <= 4096 bytes before fuses are changed.
+For ATmega328 use MCU=atmega328.
+
+ONE-TIME BOOTLOADER INSTALL
+---------------------------
+Only after both application and bootloader compile successfully:
+
+avrdude -c usbasp -p m328p -B 100 \
+  -U flash:w:build/midi_cv_x.hex:i \
+  -U flash:w:bootloader/midicvx_bootloader.hex:i \
+  -U lfuse:w:0xFF:m -U hfuse:w:0xD8:m -U efuse:w:0x05:m
+
+NOTE: run this command from ~/Desktop/foundations. If the bootloader was built
+inside ~/Desktop/foundations/bootloader, its HEX path is correct as written.
+
+MAKE WAV
+--------
+cd ~/Desktop/foundations
+python3 bootloader/make_update_wav.py build/midi_cv_x.hex \
+  --version 1.0.0 -o MIDICVX_v1.0.0.wav
+
+AUDIO UPDATE TEST
+-----------------
+1. Connect a WIRED phone/computer/audio-interface output to CLOCK.
+2. Disable EQ, fades, normalization, Bluetooth, crossfades and effects.
+3. Hold PROGRAM while powering the module.
+4. Start the WAV within ~3 seconds.
+5. Lower red LED gives a brief pulse as pages are accepted.
+6. Three slower red flashes = full CRC32 passed; module auto-reboots.
+7. If interrupted or invalid, the bootloader stays in recovery mode. Replay
+   the entire WAV from the beginning.
+
+IMPORTANT
+---------
+The bootloader reads CLOCK through ADC1, so it is designed to accept audio
+levels below ordinary 5 V logic thresholds. Real-hardware audio level margin
+still needs to be established on this board before public v1.0 release.

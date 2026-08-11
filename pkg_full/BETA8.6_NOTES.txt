@@ -1,0 +1,21 @@
+MIDICVX v1.0.0-beta8.6
+
+Persistence
+-----------
+- Restores last LIVE / MONO ARP / DUAL ARP mode.
+- Restores last UP / DOWN / PING-PONG / RANDOM / ORDER PLAYED algorithm.
+- Restores learned split.
+- Mode and algorithm changes are committed after 2 seconds of inactivity.
+- Split learning commits immediately.
+- CRC-8 protects the MIDICVX settings block.
+- Existing beta8.5 EEPROM fields migrate automatically on first boot.
+
+Bootloader foundation
+---------------------
+- Application continues to reserve top 4 KiB of flash.
+- Separate bootloader project links at byte address 0x7000.
+- PROGRAM held at reset enters the bootloader foundation.
+- CLOCK jack / PC1 is the update input.
+- Current bootloader code is an edge-detection hardware diagnostic only.
+- Do NOT change BOOTRST/BOOTSZ fuses yet; final fuse values are deferred until
+  the audio input and full flash-writing bootloader are validated on hardware.

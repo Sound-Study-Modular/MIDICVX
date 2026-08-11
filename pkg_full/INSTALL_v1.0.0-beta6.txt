@@ -1,0 +1,15 @@
+MIDICVX v1.0.0-beta6 — ARP 1 Voice routing rewrite
+
+Replace playback.c, then build normally.
+
+ARP 1 Voice fixed routing:
+- MIDI notes 0 through 36 -> CV1/GATE1 live bass only
+- MIDI notes 37 through 127 -> CV2/GATE2 arpeggiator only
+
+Why note 36:
+Many MIDI controllers and DAWs label MIDI note 60 as C3. On those devices,
+MIDI note 36 is displayed as C1. The previous note-24 boundary sat below the
+playable range and therefore sent nearly everything to CV2.
+
+This revision adds physically separate bass_velocity[] and arp_velocity[] pools.
+CV2 cannot read bass notes; CV1 cannot read upper notes in ARP 1 Voice.

@@ -1,0 +1,33 @@
+MIDICVX v1.0.0-beta8.5 hardware test
+
+1. MODE LED
+   Long hold PROGRAM repeatedly.
+   LIVE = lower red off.
+   MONO ARP = lower red solid.
+   DUAL ARP = lower red slow blink independent of clock.
+
+2. MONO ARP / 1 VOICE
+   Below split: CV1/GATE1 live, gate high while key held and low on release.
+   At/above split: CV2/GATE2 arp. One held note repeats every clock.
+
+3. MONO ARP / 2 VOICE
+   Below split: CV1/GATE1 arp. One held note repeats every clock.
+   At/above split: CV2/GATE2 live, gate high while key held and low on release.
+
+4. DUAL ARP / 1 VOICE
+   Below split: CV1/GATE1 independent arp.
+   At/above split: CV2/GATE2 independent arp.
+   Both advance on the same transport clock.
+
+5. DUAL ARP / 2 VOICE
+   Confirm beta8.4 dynamic lower/upper dual-arp behavior remains intact.
+
+6. ALGORITHMS
+   In MONO and DUAL ARP, short PROGRAM cycles all five algorithms and gives
+   1-5 lower-red indication blinks, then returns to the mode LED state.
+
+7. EEPROM
+   Change mode, algorithm, and learned split. Power cycle and confirm recall.
+
+8. LIVE REGRESSION
+   Confirm original LIVE behavior in both front-panel switch positions.

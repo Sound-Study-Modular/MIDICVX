@@ -1,0 +1,12 @@
+MIDICVX v1.0.0-beta8.4 - Continuous single-note ARP
+
+Changes from beta8.3:
+- Every arpeggiated voice now explicitly advances on every transport clock while its arp pool is non-empty.
+- If an arp pool contains exactly one note, that exact note is retriggered on every clock pulse in ALL five arp algorithms.
+- ARP 1 Voice bass (CV1/GATE1) is unchanged: key held = gate high, key released = gate low. It does NOT pulse with the arp clock.
+- ARP 1 Voice CV2/GATE2 repeats a single upper-zone note rhythmically.
+- ARP 2 Voice: either voice repeats its single assigned note rhythmically; both voices remain clock-driven.
+- Zero notes in an arp pool = that arp gate remains low.
+- LIVE mode unchanged.
+
+Replace playback.c, then rebuild and flash normally.

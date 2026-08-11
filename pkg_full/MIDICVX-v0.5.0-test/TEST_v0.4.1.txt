@@ -1,0 +1,10 @@
+MIDICVX v0.4.1 - Held-note manager
+
+This build adds the 128-note held-velocity table while preserving normal live
+MIDI-to-CV behavior. The external transport input and its two red LED indicators
+remain unchanged. Transport does not advance notes in this build.
+
+Expected test:
+1. Normal MIDI notes, CV, gates, pitch bend and Program-button behavior remain normal.
+2. External clock into the former Clock Out jack still flashes both red LEDs.
+3. No new audible arpeggiator behavior yet.

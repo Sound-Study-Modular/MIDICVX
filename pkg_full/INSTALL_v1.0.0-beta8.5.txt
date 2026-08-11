@@ -1,0 +1,39 @@
+MIDICVX v1.0.0-beta8.5 - Three Performance Modes
+
+Long PROGRAM hold cycles:
+  LIVE -> MONO ARP -> DUAL ARP -> LIVE
+
+Lower RED LED:
+  OFF        = LIVE
+  SOLID      = MONO ARP
+  SLOW BLINK = DUAL ARP (free-running, not clock-synced)
+
+MONO ARP
+  1 VOICE: below split = CV1/GATE1 LIVE; split and above = CV2/GATE2 ARP
+  2 VOICE: below split = CV1/GATE1 ARP; split and above = CV2/GATE2 LIVE
+
+DUAL ARP
+  1 VOICE: below split = CV1/GATE1 ARP; split and above = CV2/GATE2 ARP
+  2 VOICE: beta8.4 dynamic lower/upper dual-ARP assignment
+
+ARP rule remains:
+  0 notes = gate low
+  1 note  = repeat that exact note every clock
+  2+      = selected arp algorithm
+
+Short PROGRAM presses in MONO ARP or DUAL ARP still select algorithms:
+  1 blink = UP
+  2 = DOWN
+  3 = PING-PONG
+  4 = RANDOM
+  5 = ORDER PLAYED
+
+The learned split, selected performance mode, and arp algorithm are stored in EEPROM.
+LIVE behavior is unchanged.
+
+Replacement files:
+  main.c
+  playback.c
+  playback.h
+  settings_layout.h
+  firmware_info.h

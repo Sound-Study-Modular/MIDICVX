@@ -1,0 +1,20 @@
+MIDICVX v1.0.0-beta3 hardware test
+
+Changes in this revision
+- LIVE mode is unchanged.
+- ARP, switch UP (1 voice): CV1/GATE1 is sustained lowest-note bass;
+  CV2/GATE2 arpeggiates all held notes except the lowest.
+- ARP, switch DOWN (2 voice): CV1/GATE1 arpeggiates the lower half;
+  CV2/GATE2 arpeggiates the upper half.
+- Arpeggiated gates now use approximately 50% of the measured clock period.
+  The yellow gate LEDs therefore visibly pulse with the actual gate outputs.
+- The sustained bass LED remains on while its bass gate is high.
+
+Test order
+1. Confirm LIVE mode in both switch positions is identical to the prior build.
+2. ARP + switch UP: hold one note. CV1/GATE1 only; CV2/GATE2 silent.
+3. Hold three notes. CV1 is lowest-note bass; CV2 arpeggiates the upper two.
+4. Confirm yellow LED 1 stays on with bass and yellow LED 2 pulses with arp gate.
+5. ARP + switch DOWN: test 2, 3, 4, and 5 notes.
+6. Confirm CV1 receives lower half and CV2 receives upper half.
+7. Confirm both yellow LEDs pulse with their corresponding arp gates.

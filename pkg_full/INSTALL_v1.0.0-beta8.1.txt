@@ -1,0 +1,17 @@
+MIDICVX v1.0.0 beta8.1
+
+Replace main.c only when upgrading from beta8.
+
+Startup split learning:
+1. Power on the module.
+2. Both yellow gate LEDs remain on for two seconds.
+3. Press the desired split key during that two-second window.
+4. Both yellow LEDs blink three times when the note is detected and saved.
+5. The selected key and all higher keys are the arp zone; lower keys are bass.
+
+Algorithm indication while ARP is enabled:
+1 blink  = UP
+2 blinks = DOWN
+3 blinks = PING-PONG
+4 blinks = RANDOM
+5 blinks = ORDER PLAYED

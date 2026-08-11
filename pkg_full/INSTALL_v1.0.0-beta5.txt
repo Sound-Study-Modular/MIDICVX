@@ -1,0 +1,25 @@
+MIDICVX v1.0.0-beta5
+
+ONLY CHANGE FROM BETA3:
+- ARP 1 Voice uses a strict fixed split at C1 / MIDI note 24.
+- Notes C1 and below feed CV1/GATE1 bass only.
+- Notes C#1 and above feed CV2/GATE2 arpeggiator only.
+- No note can cross between those zones.
+
+NOT INCLUDED:
+- No EEPROM split setting.
+- No startup MIDI-key learning.
+- No changes to LIVE, ARP algorithms, LEDs, or ARP 2 Voice.
+
+INSTALL:
+1. Replace playback.c in ~/Desktop/foundations with the included playback.c.
+2. Compile:
+
+   cd ~/Desktop/foundations
+   make clean
+   make MCU=atmega328p
+
+3. Flash:
+
+   avrdude -c usbasp -p m328p -B 100 \
+   -U flash:w:build/midi_cv_x.hex:i

@@ -1,0 +1,24 @@
+MIDICVX v1.0.0-beta8.3
+
+Replace:
+  main.c
+  main.h
+  midi.c
+  playback.c
+
+Build:
+  cd ~/Desktop/foundations
+  make clean
+  make MCU=atmega328p
+
+Flash:
+  avrdude -c usbasp -p m328p -B 100 -U flash:w:build/midi_cv_x.hex:i
+
+Startup split learn:
+  1. Power on. Both yellow gate LEDs illuminate during the 2-second learn window.
+  2. Press the desired lowest ARP key while they are illuminated.
+  3. The lower red LED pulses once.
+  4. Both yellow LEDs blink three times.
+  5. The chosen key and all higher keys are ARP; lower keys are bass.
+
+The first valid Note On is captured immediately and saved to EEPROM.

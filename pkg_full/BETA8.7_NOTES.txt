@@ -1,0 +1,13 @@
+MIDICVX v1.0.0-beta8.7
+
+Stability / transition revision
+--------------------------------
+- Mode changes silence both outputs, cancel pending retriggers, and reset arp history.
+- Held MIDI notes are preserved across mode changes and rebuilt for the destination mode.
+- Algorithm changes restart both arp engines from a clean first step.
+- UP restarts from lowest; DOWN from highest; PING-PONG ascending; ORDER PLAYED from first held key.
+- RANDOM clears previous-note history and restarts from a deterministic nonzero seed.
+- 1 VOICE / 2 VOICE switch changes are applied immediately while notes are held.
+- LIVE mode held notes are replayed through the new voice-switch routing.
+- MONO/DUAL arp switch changes drop stale gates and rebuild arp pools immediately.
+- Split learn and EEPROM persistence behavior are unchanged from beta8.6.1.

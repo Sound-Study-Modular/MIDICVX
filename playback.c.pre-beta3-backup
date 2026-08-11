@@ -1,0 +1,433 @@
+#include "main.h"
+
+#define MIDI_NOTE_COUNT 128U
+#define NO_NOTE 0xFFU
+#define ARP_GATE_GAP_MS 2U
+
+typedef struct {
+    uint8_t current_note;
+    uint8_t direction_up;
+    uint8_t random_state;
+    uint8_t gate_pending;
+    uint8_t gate_active;
+    uint32_t gate_on_time;
+    uint32_t gate_off_time;
+} arp_engine_t;
+
+static uint8_t held_velocity[MIDI_NOTE_COUNT];
+static uint8_t held_channel[MIDI_NOTE_COUNT];
+static uint8_t held_order[MIDI_NOTE_COUNT];
+static uint8_t held_count;
+static uint8_t held_order_count;
+static uint8_t arp_enabled;
+static arp_mode_t arp_mode;
+static playback_output_t compatibility_output;
+static arp_engine_t engine[PLAYBACK_OUTPUT_COUNT];
+static uint32_t last_transport_tick;
+static uint32_t transport_interval_ms;
+
+static uint8_t IsTwoVoice(void)
+{
+    return ((VOICE_SW_PORT_IN & VOICE_SW_PIN) == 0U);
+}
+
+static void GateLow(playback_output_t out)
+{
+    if(out == PLAYBACK_OUTPUT_CV2_GATE2) GATE2_LOW();
+    else GATE1_LOW();
+}
+
+static void GateHigh(playback_output_t out)
+{
+    if(out == PLAYBACK_OUTPUT_CV2_GATE2) GATE2_HIGH();
+    else GATE1_HIGH();
+}
+
+static void WriteNote(playback_output_t out, uint8_t note)
+{
+    DAC_WriteNote((out == PLAYBACK_OUTPUT_CV2_GATE2) ? 1U : 0U, note);
+}
+
+static void EngineReset(playback_output_t out)
+{
+    engine[out].current_note = NO_NOTE;
+    engine[out].direction_up = 1U;
+    engine[out].random_state ^= (uint8_t)(g_time + (uint8_t)out * 53U);
+    engine[out].gate_pending = 0U;
+    engine[out].gate_active = 0U;
+}
+
+static void SilenceOutput(playback_output_t out)
+{
+    GateLow(out);
+    engine[out].gate_pending = 0U;
+    engine[out].gate_active = 0U;
+    engine[out].current_note = NO_NOTE;
+}
+
+static void SilenceArps(void)
+{
+    SilenceOutput(PLAYBACK_OUTPUT_CV1_GATE1);
+    SilenceOutput(PLAYBACK_OUTPUT_CV2_GATE2);
+}
+
+static void ClearHeld(void)
+{
+    uint8_t n;
+    for(n = 0U; n < MIDI_NOTE_COUNT; ++n) {
+        held_velocity[n] = 0U;
+        held_channel[n] = 0U;
+    }
+    held_count = 0U;
+    held_order_count = 0U;
+}
+
+static void OrderAppend(uint8_t note)
+{
+    if(held_order_count < MIDI_NOTE_COUNT) held_order[held_order_count++] = note;
+}
+
+static void OrderRemove(uint8_t note)
+{
+    uint8_t i;
+    for(i = 0U; i < held_order_count; ++i) {
+        if(held_order[i] == note) {
+            for(; (uint8_t)(i + 1U) < held_order_count; ++i) held_order[i] = held_order[i + 1U];
+            --held_order_count;
+            return;
+        }
+    }
+}
+
+static uint8_t LowestHeld(void)
+{
+    uint8_t n;
+    for(n = 0U; n < MIDI_NOTE_COUNT; ++n) if(held_velocity[n] != 0U) return n;
+    return NO_NOTE;
+}
+
+static uint8_t HighestHeld(void)
+{
+    int16_t n;
+    for(n = 127; n >= 0; --n) if(held_velocity[(uint8_t)n] != 0U) return (uint8_t)n;
+    return NO_NOTE;
+}
+
+static uint8_t RankOf(uint8_t note)
+{
+    uint8_t n, rank = 0U;
+    for(n = 0U; n < MIDI_NOTE_COUNT; ++n) {
+        if(held_velocity[n] == 0U) continue;
+        if(n == note) return rank;
+        ++rank;
+    }
+    return NO_NOTE;
+}
+
+static uint8_t InPool(playback_output_t out, uint8_t note)
+{
+    uint8_t rank;
+    uint8_t lower_count;
+    if(note >= MIDI_NOTE_COUNT || held_velocity[note] == 0U) return 0U;
+    rank = RankOf(note);
+    if(rank == NO_NOTE) return 0U;
+
+    if(IsTwoVoice() == 0U) {
+        /* ARP + 1 voice: CV1 owns the lowest note as live bass;
+         * CV2 arpeggiates every remaining held note. */
+        return (out == PLAYBACK_OUTPUT_CV2_GATE2) ? (rank > 0U) : 0U;
+    }
+
+    /* ARP + 2 voice: lower half (rounded up) -> CV1,
+     * upper half -> CV2, matching the original Erica output identity. */
+    lower_count = (uint8_t)((held_count + 1U) / 2U);
+    if(out == PLAYBACK_OUTPUT_CV1_GATE1) return (rank < lower_count);
+    return (rank >= lower_count);
+}
+
+static uint8_t PoolCount(playback_output_t out)
+{
+    uint8_t n, count = 0U;
+    for(n = 0U; n < MIDI_NOTE_COUNT; ++n) if(InPool(out, n)) ++count;
+    return count;
+}
+
+static uint8_t PoolLowest(playback_output_t out)
+{
+    uint8_t n;
+    for(n = 0U; n < MIDI_NOTE_COUNT; ++n) if(InPool(out, n)) return n;
+    return NO_NOTE;
+}
+
+static uint8_t PoolHighest(playback_output_t out)
+{
+    int16_t n;
+    for(n = 127; n >= 0; --n) if(InPool(out, (uint8_t)n)) return (uint8_t)n;
+    return NO_NOTE;
+}
+
+static uint8_t NextUp(playback_output_t out, uint8_t after)
+{
+    uint16_t n, start = (after == NO_NOTE) ? 0U : (uint16_t)after + 1U;
+    for(n = start; n < MIDI_NOTE_COUNT; ++n) if(InPool(out, (uint8_t)n)) return (uint8_t)n;
+    for(n = 0U; n < start && n < MIDI_NOTE_COUNT; ++n) if(InPool(out, (uint8_t)n)) return (uint8_t)n;
+    return NO_NOTE;
+}
+
+static uint8_t NextDown(playback_output_t out, uint8_t before)
+{
+    int16_t n, start = (before == NO_NOTE) ? 127 : (int16_t)before - 1;
+    for(n = start; n >= 0; --n) if(InPool(out, (uint8_t)n)) return (uint8_t)n;
+    for(n = 127; n > start; --n) if(InPool(out, (uint8_t)n)) return (uint8_t)n;
+    return NO_NOTE;
+}
+
+static uint8_t NextOrder(playback_output_t out, uint8_t after)
+{
+    uint8_t i, start = 0U;
+    if(PoolCount(out) == 0U) return NO_NOTE;
+    if(after != NO_NOTE) {
+        for(i = 0U; i < held_order_count; ++i) if(held_order[i] == after) { start = (uint8_t)(i + 1U); break; }
+    }
+    for(i = start; i < held_order_count; ++i) if(InPool(out, held_order[i])) return held_order[i];
+    for(i = 0U; i < start && i < held_order_count; ++i) if(InPool(out, held_order[i])) return held_order[i];
+    return PoolLowest(out);
+}
+
+static uint8_t RandomByte(playback_output_t out)
+{
+    uint8_t x = engine[out].random_state;
+    x ^= (uint8_t)(x << 3); x ^= (uint8_t)(x >> 5); x ^= (uint8_t)(x << 1);
+    if(x == 0U) x = (out == PLAYBACK_OUTPUT_CV1_GATE1) ? 0xA7U : 0x5DU;
+    engine[out].random_state = x;
+    return x;
+}
+
+static uint8_t NextRandom(playback_output_t out)
+{
+    uint8_t n, target, choices = PoolCount(out), candidate = NO_NOTE;
+    if(choices == 0U) return NO_NOTE;
+    if(choices == 1U) return PoolLowest(out);
+    if(engine[out].current_note != NO_NOTE && InPool(out, engine[out].current_note)) --choices;
+    target = (uint8_t)(RandomByte(out) % choices);
+    for(n = 0U; n < MIDI_NOTE_COUNT; ++n) {
+        if(!InPool(out, n) || n == engine[out].current_note) continue;
+        candidate = n;
+        if(target-- == 0U) return n;
+    }
+    return candidate;
+}
+
+static uint8_t NextPingPong(playback_output_t out)
+{
+    uint8_t next;
+    if(PoolCount(out) <= 1U) return PoolLowest(out);
+    if(engine[out].current_note == NO_NOTE) { engine[out].direction_up = 1U; return PoolLowest(out); }
+    if(engine[out].direction_up) {
+        next = NextUp(out, engine[out].current_note);
+        if(next <= engine[out].current_note) { engine[out].direction_up = 0U; next = NextDown(out, engine[out].current_note); }
+    } else {
+        next = NextDown(out, engine[out].current_note);
+        if(next >= engine[out].current_note) { engine[out].direction_up = 1U; next = NextUp(out, engine[out].current_note); }
+    }
+    return next;
+}
+
+static uint8_t SelectNext(playback_output_t out)
+{
+    switch(arp_mode) {
+        case ARP_MODE_UP: return NextUp(out, engine[out].current_note);
+        case ARP_MODE_DOWN: return NextDown(out, engine[out].current_note);
+        case ARP_MODE_PINGPONG: return NextPingPong(out);
+        case ARP_MODE_RANDOM: return NextRandom(out);
+        case ARP_MODE_ORDER_PLAYED: return NextOrder(out, engine[out].current_note);
+        default: return NO_NOTE;
+    }
+}
+
+static uint32_t ArpGateWidthMs(void)
+{
+    uint32_t width;
+
+    /* Use a 50% duty-cycle gate whenever the incoming clock period is known.
+     * The minimum keeps fast clocks usable; the default makes the first pulse
+     * visible and musically useful before a second clock edge has arrived. */
+    if(transport_interval_ms == 0U) return 50U;
+    width = transport_interval_ms / 2U;
+    if(width < 8U) width = 8U;
+    return width;
+}
+
+static void StartArpNote(playback_output_t out, uint8_t note)
+{
+    GateLow(out);
+    WriteNote(out, note);
+    engine[out].current_note = note;
+    engine[out].gate_on_time = g_time + ARP_GATE_GAP_MS;
+    engine[out].gate_off_time = engine[out].gate_on_time + ArpGateWidthMs();
+    engine[out].gate_pending = 1U;
+    engine[out].gate_active = 0U;
+}
+
+static void UpdateBass(void)
+{
+    uint8_t bass;
+    if(arp_enabled == 0U || IsTwoVoice() != 0U) return;
+    bass = LowestHeld();
+    if(bass == NO_NOTE) {
+        GateLow(PLAYBACK_OUTPUT_CV1_GATE1);
+    } else {
+        WriteNote(PLAYBACK_OUTPUT_CV1_GATE1, bass);
+        GateHigh(PLAYBACK_OUTPUT_CV1_GATE1);
+    }
+}
+
+static void LiveNoteOn(const midi_msg_t *msg)
+{
+    if(g_midi_ch[0] == g_midi_ch[1]) MidiCv_NoteOn(msg->data1, msg->data2);
+    else MidiCv_NoteOnSingle((msg->channel == g_midi_ch[0]) ? 0U : 1U, msg->data1, msg->data2);
+}
+
+static void LiveNoteOff(const midi_msg_t *msg)
+{
+    if(g_midi_ch[0] == g_midi_ch[1]) MidiCv_NoteOff(msg->data1);
+    else MidiCv_NoteOffSingle((msg->channel == g_midi_ch[0]) ? 0U : 1U, msg->data1);
+}
+
+static void RestoreLiveState(void)
+{
+    uint8_t i;
+    midi_msg_t msg;
+    MidiCv_Reset();
+    msg.type = MIDI__NOTE_ON;
+    for(i = 0U; i < held_order_count; ++i) {
+        uint8_t note = held_order[i];
+        if(held_velocity[note] == 0U) continue;
+        msg.channel = held_channel[note]; msg.data1 = note; msg.data2 = held_velocity[note];
+        LiveNoteOn(&msg);
+    }
+}
+
+void Playback_Init(void)
+{
+    ClearHeld();
+    last_transport_tick = 0U;
+    transport_interval_ms = 0U;
+    arp_enabled = 0U; arp_mode = ARP_MODE_UP; compatibility_output = PLAYBACK_OUTPUT_CV1_GATE1;
+    engine[0].random_state = 0xA7U; engine[1].random_state = 0x5DU;
+    EngineReset(PLAYBACK_OUTPUT_CV1_GATE1); EngineReset(PLAYBACK_OUTPUT_CV2_GATE2);
+}
+
+void Playback_Process(void)
+{
+    playback_output_t out;
+    if(arp_enabled == 0U) return;
+    for(out = PLAYBACK_OUTPUT_CV1_GATE1; out < PLAYBACK_OUTPUT_COUNT; out = (playback_output_t)(out + 1U)) {
+        if(engine[out].gate_pending && (int32_t)(g_time - engine[out].gate_on_time) >= 0) {
+            GateHigh(out);
+            engine[out].gate_pending = 0U;
+            engine[out].gate_active = 1U;
+        }
+        if(engine[out].gate_active && (int32_t)(g_time - engine[out].gate_off_time) >= 0) {
+            GateLow(out);
+            engine[out].gate_active = 0U;
+        }
+    }
+}
+
+void Playback_SetArpEnabled(uint8_t enabled)
+{
+    enabled = (enabled != 0U);
+    if(enabled == arp_enabled) return;
+    SilenceArps();
+    MidiCv_Reset();
+    EngineReset(PLAYBACK_OUTPUT_CV1_GATE1); EngineReset(PLAYBACK_OUTPUT_CV2_GATE2);
+    arp_enabled = enabled;
+    if(arp_enabled) UpdateBass();
+    else RestoreLiveState();
+}
+
+uint8_t Playback_IsArpEnabled(void) { return arp_enabled; }
+void Playback_ToggleArp(void) { Playback_SetArpEnabled(arp_enabled == 0U); }
+
+void Playback_SetArpMode(arp_mode_t mode)
+{
+    if(mode >= ARP_MODE_COUNT || mode == arp_mode) return;
+    SilenceArps(); arp_mode = mode;
+    EngineReset(PLAYBACK_OUTPUT_CV1_GATE1); EngineReset(PLAYBACK_OUTPUT_CV2_GATE2);
+    UpdateBass();
+}
+arp_mode_t Playback_GetArpMode(void) { return arp_mode; }
+void Playback_NextArpMode(void)
+{
+    arp_mode_t next;
+    if(!arp_enabled) return;
+    next = (arp_mode_t)(arp_mode + 1U); if(next >= ARP_MODE_COUNT) next = ARP_MODE_UP;
+    Playback_SetArpMode(next);
+}
+void Playback_SetArpOutput(playback_output_t output) { if(output < PLAYBACK_OUTPUT_COUNT) compatibility_output = output; }
+playback_output_t Playback_GetArpOutput(void) { return compatibility_output; }
+
+void Playback_NoteOn(const midi_msg_t *msg)
+{
+    uint8_t note;
+    if(msg == 0) return;
+    note = msg->data1; if(note >= MIDI_NOTE_COUNT) return;
+    if(msg->data2 == 0U) { Playback_NoteOff(msg); return; }
+    if(held_velocity[note] == 0U) { ++held_count; OrderAppend(note); }
+    held_velocity[note] = msg->data2; held_channel[note] = msg->channel;
+    if(!arp_enabled) LiveNoteOn(msg);
+    else { EngineReset(PLAYBACK_OUTPUT_CV1_GATE1); EngineReset(PLAYBACK_OUTPUT_CV2_GATE2); UpdateBass(); }
+}
+
+void Playback_NoteOff(const midi_msg_t *msg)
+{
+    uint8_t note;
+    if(msg == 0) return;
+    note = msg->data1; if(note >= MIDI_NOTE_COUNT) return;
+    if(held_velocity[note] != 0U) {
+        held_velocity[note] = 0U; held_channel[note] = 0U; OrderRemove(note); if(held_count) --held_count;
+    }
+    if(!arp_enabled) LiveNoteOff(msg);
+    else {
+        EngineReset(PLAYBACK_OUTPUT_CV1_GATE1); EngineReset(PLAYBACK_OUTPUT_CV2_GATE2);
+        if(held_count == 0U) SilenceArps(); else UpdateBass();
+    }
+}
+
+void Playback_TransportTick(void)
+{
+    uint8_t note;
+    uint32_t now = g_time;
+
+    if(last_transport_tick != 0U) {
+        uint32_t measured = now - last_transport_tick;
+        if(measured != 0U) transport_interval_ms = measured;
+    }
+    last_transport_tick = now;
+
+    if(!arp_enabled) return;
+
+    if(IsTwoVoice() == 0U) {
+        UpdateBass();
+        note = SelectNext(PLAYBACK_OUTPUT_CV2_GATE2);
+        if(note == NO_NOTE) SilenceOutput(PLAYBACK_OUTPUT_CV2_GATE2);
+        else StartArpNote(PLAYBACK_OUTPUT_CV2_GATE2, note);
+        return;
+    }
+
+    /* In dual-ARP mode both outputs advance on the same qualified transport tick. */
+    note = SelectNext(PLAYBACK_OUTPUT_CV1_GATE1);
+    if(note == NO_NOTE) SilenceOutput(PLAYBACK_OUTPUT_CV1_GATE1);
+    else StartArpNote(PLAYBACK_OUTPUT_CV1_GATE1, note);
+
+    note = SelectNext(PLAYBACK_OUTPUT_CV2_GATE2);
+    if(note == NO_NOTE) SilenceOutput(PLAYBACK_OUTPUT_CV2_GATE2);
+    else StartArpNote(PLAYBACK_OUTPUT_CV2_GATE2, note);
+}
+
+uint8_t Playback_GetHeldCount(void) { return held_count; }
+uint8_t Playback_IsNoteHeld(uint8_t note) { return (note < MIDI_NOTE_COUNT && held_velocity[note] != 0U); }
+uint8_t Playback_GetVelocity(uint8_t note) { return (note < MIDI_NOTE_COUNT) ? held_velocity[note] : 0U; }
+int8_t Playback_GetLowestHeld(void) { uint8_t n = LowestHeld(); return (n == NO_NOTE) ? -1 : (int8_t)n; }
+int8_t Playback_GetHighestHeld(void) { uint8_t n = HighestHeld(); return (n == NO_NOTE) ? -1 : (int8_t)n; }

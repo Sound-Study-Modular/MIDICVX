@@ -1,0 +1,8 @@
+Copy playback.c into ~/Desktop/foundation, then build and flash.
+
+cd ~/Desktop/foundation
+cp playback.c playback.c.pre-beta3-backup
+cp ~/Downloads/MIDICVX-v1.0.0-beta3/playback.c .
+make clean
+make MCU=atmega328p
+avrdude -c usbasp -p m328p -B 100 -U flash:w:build/midi_cv_x.hex:i

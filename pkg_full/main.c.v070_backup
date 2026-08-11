@@ -1,0 +1,274 @@
+/*
+ * DIY MIDI CV.c
+ *
+ * Created: 1/16/2017 10:33:39 AM
+ * Author : Janis Zaharans
+ */
+
+#include "main.h"
+
+#define BUTTON_LONG_PRESS_MS       700U
+#define BUTTON_CONFIG_PRESS_MS    3000U
+
+#define ARP_LED_STEP_MS            90U
+#define ARP_LED_ENTRY_TOGGLES       4U
+#define ARP_LED_EXIT_TOGGLES        2U
+
+volatile ring_buffer_t g_midi_buf;
+volatile midi_parser_t g_midi_parser;
+volatile uint8_t       g_calib_mode;
+volatile uint32_t      g_time;
+volatile button_t      g_btn;
+volatile uint32_t      g_btn_press_time;
+volatile uint8_t       g_midi_ch[2] = { 1, 1 };
+volatile uint8_t       g_config_mode;
+volatile uint32_t      g_midi_clk_timeout;
+
+typedef struct
+{
+	uint8_t active;
+	uint8_t toggles_remaining;
+	uint8_t led_on;
+	uint8_t final_on;
+	uint32_t next_time;
+} arp_led_transition_t;
+
+static arp_led_transition_t g_arp_led;
+
+static void ArpLed_Apply(uint8_t on)
+{
+	if(on != 0U) {
+		MIDI_LED_HIGH();
+	} else {
+		MIDI_LED_LOW();
+	}
+	g_arp_led.led_on = on;
+}
+
+static void ArpLed_SetStableState(void)
+{
+	g_arp_led.active = 0U;
+	g_arp_led.toggles_remaining = 0U;
+	g_arp_led.final_on = Playback_IsArpEnabled();
+	ArpLed_Apply(g_arp_led.final_on);
+}
+
+static void ArpLed_StartTransition(uint8_t entering_arp)
+{
+	g_arp_led.active = 1U;
+	g_arp_led.toggles_remaining = entering_arp != 0U
+		? ARP_LED_ENTRY_TOGGLES
+		: ARP_LED_EXIT_TOGGLES;
+	g_arp_led.final_on = entering_arp != 0U;
+	g_arp_led.next_time = g_time;
+
+	/* Entry begins dark; exit begins lit. */
+	ArpLed_Apply(entering_arp == 0U);
+}
+
+static void ArpLed_Process(void)
+{
+	if(g_arp_led.active == 0U) {
+		ArpLed_Apply(Playback_IsArpEnabled());
+		return;
+	}
+
+	if((int32_t)(g_time - g_arp_led.next_time) < 0) {
+		return;
+	}
+
+	if(g_arp_led.toggles_remaining == 0U) {
+		g_arp_led.active = 0U;
+		ArpLed_Apply(g_arp_led.final_on);
+		return;
+	}
+
+	ArpLed_Apply(g_arp_led.led_on == 0U);
+	g_arp_led.toggles_remaining--;
+	g_arp_led.next_time = g_time + ARP_LED_STEP_MS;
+}
+
+int main(void)
+{
+	uint8_t button_press_consumed = 0U;
+
+	const uint8_t pattern_calib_len[] = { 4, 2 };
+	const uint32_t pattern_calib[2][4] = {
+		{ 40, 960, 0, 0 },
+		{ 40, 200, 40, 720 }
+	};
+	const uint8_t pattern_config_len[] = { 4, 2 };
+	const uint32_t pattern_config[2][4] = {
+		{ 40, 460, 0, 0 },
+		{ 40, 100, 40, 320 }
+	};
+
+	/* Hardware initialization */
+	UART_Init();
+	DAC_Init();
+	DAC_Config();
+	Transport_Init();
+	MidiCv_Init();
+	Playback_Init();
+	Switch_Init();
+	Button_Init();
+	Led_Init();
+	Tick_Init();
+	Gate_Init();
+
+	/* Initialize Ring Buffer */
+	RingBuffer_Init(&g_midi_buf);
+
+	/* Initialize MIDI parser */
+	Midi_Init(&g_midi_parser);
+
+	g_btn.port = &BUTTON_PORT_IN;
+	g_btn.pin = BUTTON_PIN;
+
+	_delay_ms(10);
+
+	/* Check if first time power-up */
+	if(eeprom_read_byte(EEPROM_ADDR__FIRST) != 0xA5) {
+		eeprom_write_byte(EEPROM_ADDR__FIRST, 0xA5);
+		Dac_MidiCalibSave();
+		MidiCv_ConfigSave();
+	} else {
+		Dac_MidiCalibLoad();
+		MidiCv_ConfigLoad();
+	}
+
+	ArpLed_SetStableState();
+
+	/* Enable global interrupts */
+	sei();
+
+	/* If button held during power-up, enter calibration mode */
+	if(BUTTON_STATE()) {
+		g_calib_mode = 1U;
+	}
+
+	while(1)
+	{
+		uint8_t special_mode_active;
+
+		Transport_Process();
+		Playback_Process();
+
+		/* Read voice switch */
+		MidiCv_SetVoices((VOICE_SW_PORT_IN & VOICE_SW_PIN) == 0);
+
+		special_mode_active = (g_calib_mode != 0U || g_config_mode != 0U);
+
+		/* Execute ARP toggle immediately when long-press threshold is reached. */
+		if(button_press_consumed == 0U &&
+		   special_mode_active == 0U &&
+		   g_btn_press_time != 0U &&
+		   BUTTON_STATE()) {
+			uint32_t held = g_time - g_btn_press_time;
+			if(held >= BUTTON_LONG_PRESS_MS && held < BUTTON_CONFIG_PRESS_MS) {
+				Playback_ToggleArp();
+				ArpLed_StartTransition(Playback_IsArpEnabled());
+				button_press_consumed = 1U;
+				g_btn_press_time = 0U;
+			}
+		}
+
+
+		/* Calibration/configuration patterns take ownership of the LED. */
+		if(g_calib_mode != 0U) {
+			Blinker_Process(
+				(uint32_t *)pattern_calib[g_calib_mode - 1U],
+				pattern_calib_len[g_calib_mode - 1U]
+			);
+		} else if(g_config_mode != 0U) {
+			Blinker_Process(
+				(uint32_t *)pattern_config[g_config_mode - 1U],
+				pattern_config_len[g_config_mode - 1U]
+			);
+		} else {
+			ArpLed_Process();
+		}
+
+		if(g_btn.press) {
+			g_btn.press = 0U;
+			g_btn_press_time = g_time;
+			button_press_consumed = 0U;
+
+			if(g_calib_mode == 1U) {
+				button_press_consumed = 1U;
+				g_calib_mode = 2U;
+			} else if(g_calib_mode == 2U) {
+				button_press_consumed = 1U;
+				g_calib_mode = 0U;
+				Dac_MidiCalibSave();
+				MidiCv_Reset();
+				ArpLed_SetStableState();
+			} else if(g_config_mode == 1U) {
+				button_press_consumed = 1U;
+				g_config_mode = 2U;
+			} else if(g_config_mode == 2U) {
+				button_press_consumed = 1U;
+				g_config_mode = 0U;
+				MidiCv_ConfigSave();
+				MidiCv_Reset();
+				ArpLed_SetStableState();
+			}
+		}
+
+		if(g_btn.release) {
+			uint32_t press_duration = 0U;
+
+			g_btn.release = 0U;
+
+			if(g_btn_press_time != 0U) {
+				press_duration = g_time - g_btn_press_time;
+			}
+
+			if(button_press_consumed == 0U &&
+			   special_mode_active == 0U &&
+			   g_btn_press_time != 0U) {
+
+				if(press_duration >= BUTTON_CONFIG_PRESS_MS) {
+					/* Preserve the original configuration-mode access. */
+					g_config_mode = 1U;
+					g_arp_led.active = 0U;
+				} else if(press_duration >= BUTTON_LONG_PRESS_MS) {
+					/* Already handled while button was held. */
+				} else if(Playback_IsArpEnabled() != 0U) {
+					/* Short presses change algorithms only while ARP is enabled. */
+					Playback_NextArpMode();
+				}
+			}
+
+			g_btn_press_time = 0U;
+			button_press_consumed = 0U;
+		}
+
+		if(!RingBuffer_IsEmpty(&g_midi_buf)) {
+			if(Midi_Parse(&g_midi_parser, RingBuffer_Read(&g_midi_buf))) {
+				if(g_calib_mode != 0U) {
+					Dac_MidiCalibration(&g_midi_parser.msg, g_calib_mode);
+				} else if(g_config_mode != 0U) {
+					MidiCv_Config(&g_midi_parser.msg, g_config_mode);
+				} else {
+					if(g_midi_parser.msg.channel == 0U ||
+					   g_midi_parser.msg.channel == g_midi_ch[0] ||
+					   g_midi_parser.msg.channel == g_midi_ch[1]) {
+						Midi_ExecuteMessage(&g_midi_parser.msg);
+					}
+				}
+			}
+		}
+	}
+}
+
+ISR(USART_RX_vect)
+{
+	RingBuffer_Write(&g_midi_buf, UDR0);
+}
+
+ISR(TIMER0_COMPA_vect)
+{
+	g_time++;
+	Button_Process(&g_btn);
+}

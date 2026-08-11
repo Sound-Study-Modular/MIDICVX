@@ -1,0 +1,27 @@
+MIDICVX v0.5.0 hardware test
+
+Short Program presses cycle:
+1. LIVE
+2. ARP UP
+3. ARP DOWN
+4. ARP PING-PONG
+5. ARP RANDOM
+6. LIVE
+
+Use CV1/GATE1 for all arp tests. CV2/GATE2 are intentionally inactive in arp modes.
+
+Hold C-E-G and apply one external clock pulse per desired step:
+UP:        C E G C E G ...
+DOWN:      G E C G E C ...
+PING-PONG: C E G E C E G ... (end notes are not repeated)
+RANDOM:    no immediate repeats while 2+ notes are held
+
+Gate test:
+Each transport pulse should create a visible/audible retrigger. Firmware creates a
+nonblocking 2 ms low gap before Gate1 rises.
+
+Regression tests:
+- LIVE MIDI-to-CV remains normal.
+- Both red clock LEDs still follow external clock/accepted ticks.
+- Releasing all held notes lowers Gate1.
+- Add/remove notes while running; sequence should adapt on the next tick.

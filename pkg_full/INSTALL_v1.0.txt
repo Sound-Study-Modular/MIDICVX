@@ -1,0 +1,17 @@
+MIDICVX v1.0 experimental firmware
+
+LIVE (ARP off): original Erica firmware behavior.
+ARP + 1 Voice (switch up):
+  CV/GATE 2 = live lowest-note bass.
+  CV/GATE 1 = arp of every held note except the lowest.
+ARP + 2 Voice (switch down):
+  All held notes are sorted and split dynamically.
+  Lower half (rounded up) -> CV/GATE 2 arp.
+  Upper half -> CV/GATE 1 arp.
+Yellow gate LEDs follow the physical gate outputs.
+
+Install:
+  cp playback.c playback.h ~/Desktop/foundation/
+  cd ~/Desktop/foundation
+  make clean
+  make

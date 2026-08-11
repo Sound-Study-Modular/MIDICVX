@@ -1,0 +1,19 @@
+MIDICVX v1.0.0-beta8.6
+
+Replace the beta8.5 files with this release, then:
+
+  make clean
+  make MCU=atmega328p
+  avrdude -c usbasp -p m328p -B 100 -U flash:w:build/midi_cv_x.hex:i
+
+For ATmega328 (non-P), build with MCU=atmega328 and use -p m328.
+
+New in beta8.6:
+- last operating mode is restored after power cycle
+- last arp algorithm is restored after power cycle
+- learned split remains persistent
+- mode/algorithm EEPROM writes are deferred by 2 seconds
+- beta8.5 settings are migrated automatically
+
+Do NOT change bootloader fuses yet. The bootloader directory is development
+scaffolding until the CLOCK-jack audio receiver is hardware-validated.

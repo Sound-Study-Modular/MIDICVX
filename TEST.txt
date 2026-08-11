@@ -1,0 +1,16 @@
+MIDICVX v0.8.0 hardware test
+
+Expected behavior:
+1. Power-up in LIVE: LED OFF.
+2. MIDI notes always play CV1/Gate1 directly.
+3. CV2/Gate2 stays silent while ARP is disabled.
+4. Long-press Program: LED transition starts before release; ARP enables.
+5. With ARP enabled, CV1/Gate1 remains directly playable.
+6. The same held-note pool is arpeggiated on CV2/Gate2 on each external transport clock edge.
+7. Short presses while ARP is enabled cycle the five algorithms.
+8. Long-press Program again: CV2/Gate2 stops; CV1/Gate1 keeps working.
+9. Notes already held when ARP is enabled are available to the arpeggiator immediately.
+
+Important:
+- The voice switch no longer assigns direct notes to CV2 while using this split-output firmware.
+- Pitch bend behavior remains inherited from the existing MIDI handling.
