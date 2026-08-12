@@ -33,7 +33,8 @@
 #define PACKET_MANIFEST        0x10U
 #define PACKET_DATA            0x20U
 #define PACKET_END             0x30U
-#define MAX_PACKET_DATA        SPM_PAGESIZE
+#define DATA_CHUNK_SIZE        32U
+#define MAX_PACKET_DATA        DATA_CHUNK_SIZE
 
 /* Timer1 runs at F_CPU/8 = 2 MHz, 0.5 us/tick. */
 #define PREAMBLE_MIN_TICKS     160U   /* 80 us */
@@ -50,6 +51,11 @@
  * 0xA5 = application safe to boot, 0x42 = update started/not yet verified.
  * Any other non-erased value is treated conservatively as recovery mode. */
 #define EEPROM_BOOT_STATUS_ADDR  96U
+#define EEPROM_PAGE_COUNT_LO      97U
+#define EEPROM_PAGE_COUNT_HI      98U
+#define EEPROM_FIRST_PKT_TYPE     99U
+#define EEPROM_FIRST_PKT_SEQ_LO  100U
+#define EEPROM_FIRST_PKT_SEQ_HI  101U
 #define BOOT_STATUS_VALID        0xA5U
 #define BOOT_STATUS_UPDATING     0x42U
 
@@ -60,6 +66,7 @@ static uint16_t expected_sequence;
 static uint16_t manifest_size;
 static uint32_t manifest_crc32;
 static uint8_t update_active;
+static uint8_t page_buffer[SPM_PAGESIZE];
 
 static void jump_to_application(void) __attribute__((noreturn));
 
@@ -69,25 +76,34 @@ static void gates_safe(void)
     PORTC &= (uint8_t)~(GATE1_MASK | GATE2_MASK);
 }
 
-static void status_on(void)  { PORTC |= STATUS_LED_MASK; }
-static void status_off(void) { PORTC &= (uint8_t)~STATUS_LED_MASK; }
+/* All LEDs are used while the bootloader is active. */
+#define BOOT_LED_MASK   (STATUS_LED_MASK | GATE1_MASK | GATE2_MASK)
+
+static void status_on(void)
+{
+    PORTC |= BOOT_LED_MASK;
+}
+
+static void status_off(void)
+{
+    PORTC &= (uint8_t)~BOOT_LED_MASK;
+}
 
 
 static void status_success(void)
 {
-    uint8_t i;
-    for(i = 0U; i < 3U; ++i) {
-        status_on(); _delay_ms(90);
-        status_off(); _delay_ms(90);
-    }
+    status_on();
+    _delay_ms(1000);
+    status_off();
 }
 
 static void status_error(void)
 {
-    uint8_t i;
-    for(i = 0U; i < 6U; ++i) {
-        status_on(); _delay_ms(35);
-        status_off(); _delay_ms(35);
+    for(;;) {
+        status_on();
+        _delay_ms(125);
+        status_off();
+        _delay_ms(125);
     }
 }
 
@@ -152,7 +168,7 @@ static void jump_to_application(void)
     for(;;) { }
 }
 
-/* Search 20 ms ADC windows until a useful audio range is seen. timeout_windows
+/* Search ~5 ms ADC windows until a useful audio range is seen. timeout_windows
  * is ignored in forced recovery mode when set to zero. */
 static uint8_t calibrate_audio(uint8_t timeout_windows)
 {
@@ -162,7 +178,7 @@ static uint8_t calibrate_audio(uint8_t timeout_windows)
         uint8_t lo = 0xFFU;
         uint8_t hi = 0U;
 
-        for(samples = 0U; samples < 760U; ++samples) {
+        for(samples = 0U; samples < 192U; ++samples) {
             uint8_t v = adc_read8();
             if(v < lo) lo = v;
             if(v > hi) hi = v;
@@ -211,12 +227,28 @@ static uint8_t wait_packet_sync(void)
 {
     uint8_t preamble = 0U;
     uint16_t dt;
+    uint8_t heartbeat = 0U;
 
     for(;;) {
         if(!wait_edge(30000U, &dt)) {
             preamble = 0U;
+
+            /*
+             * No audio edge detected.
+             * Toggle the status LED periodically so it is obvious
+             * that the bootloader is alive and waiting.
+             */
+            if(++heartbeat >= 16U) {
+                PORTC ^= STATUS_LED_MASK;
+                heartbeat = 0U;
+            }
+
             continue;
         }
+
+        /* Audio activity: keep status LED on while looking for sync. */
+        PORTC |= STATUS_LED_MASK;
+        heartbeat = 0U;
 
         if(dt >= PREAMBLE_MIN_TICKS && dt <= PREAMBLE_MAX_TICKS) {
             if(preamble < 0xFFU) ++preamble;
@@ -347,6 +379,8 @@ static uint8_t parse_manifest(const uint8_t *p, uint8_t len)
     expected_sequence = 0U;
     update_active = 1U;
     eeprom_update_byte((uint8_t *)EEPROM_BOOT_STATUS_ADDR, BOOT_STATUS_UPDATING);
+    eeprom_update_byte((uint8_t *)EEPROM_PAGE_COUNT_LO, 0U);
+    eeprom_update_byte((uint8_t *)EEPROM_PAGE_COUNT_HI, 0U);
     return 1U;
 }
 
@@ -385,14 +419,26 @@ int main(void)
     if(!force_recovery && !program_button_held())
         jump_to_application();
 
-    /* Bootloader ready: slow red indication while searching for audio. */
+    /* Bootloader ready. */
     status_on();
 
-    /* With a valid app, give PROGRAM-at-boot about 3 seconds to find audio;
-     * otherwise fall through to the app so legacy calibration is still usable.
-     * Recovery mode waits indefinitely. */
-    if(!calibrate_audio(force_recovery ? 0U : 150U))
-        jump_to_application();
+    /* Diagnostic: clear first-valid-packet record for this update attempt. */
+    eeprom_update_byte((uint8_t *)EEPROM_FIRST_PKT_TYPE, 0xFFU);
+    eeprom_update_byte((uint8_t *)EEPROM_FIRST_PKT_SEQ_LO, 0xFFU);
+    eeprom_update_byte((uint8_t *)EEPROM_FIRST_PKT_SEQ_HI, 0xFFU);
+
+    /* Boot behavior:
+ *
+ *  - Normal power-up: jump directly to the application.
+ *  - PROGRAM held: wait forever for update audio.
+ *  - Invalid application: recovery mode; wait forever.
+ */
+if (!program_button_held() && !force_recovery)
+{
+    jump_to_application();
+}
+
+calibrate_audio(0U);
 
     status_off();
 
@@ -401,59 +447,152 @@ int main(void)
         uint16_t sequence;
 
         wait_packet_sync();
+
+        /* Diagnostic: GATE1/yellow = packet sync detected. */
+        PORTC |= GATE1_MASK;
+
         if(!receive_packet(&type, &sequence, &length, payload)) {
-            update_active = 0U;
-            status_error();
+            /* Bad audio packet: discard it and resynchronize.
+             * The WAV encoder transmits every packet twice. */
+            status_on();
+            _delay_ms(20);
+            status_off();
             continue;
+        }
+
+        /* Diagnostic: GATE2/yellow = complete CRC-valid packet decoded. */
+        PORTC |= GATE2_MASK;
+
+        if(eeprom_read_byte((const uint8_t *)EEPROM_FIRST_PKT_TYPE) == 0xFFU) {
+            eeprom_update_byte((uint8_t *)EEPROM_FIRST_PKT_TYPE, type);
+            eeprom_update_byte((uint8_t *)EEPROM_FIRST_PKT_SEQ_LO,
+                               (uint8_t)(sequence & 0xFFU));
+            eeprom_update_byte((uint8_t *)EEPROM_FIRST_PKT_SEQ_HI,
+                               (uint8_t)(sequence >> 8));
         }
 
         if(type == PACKET_MANIFEST) {
             if(!parse_manifest(payload, length)) {
-                update_active = 0U;
-                status_error();
-            } else {
-                status_on(); _delay_ms(30); status_off();
+                /* Ignore malformed manifest and wait for its repeated copy. */
+                continue;
             }
+
+            /* Diagnostic: both yellow LEDs = manifest accepted. */
+            PORTC |= (GATE1_MASK | GATE2_MASK);
+            _delay_ms(250);
+            PORTC &= (uint8_t)~(GATE1_MASK | GATE2_MASK);
             continue;
         }
 
         if(type == PACKET_DATA) {
             uint16_t address;
-            uint16_t expected_pages;
-            if(!update_active || sequence != expected_sequence) {
-                update_active = 0U;
-                status_error();
+            uint16_t expected_chunks;
+            uint16_t page_base;
+            uint8_t page_offset;
+            uint8_t i;
+
+            if(!update_active) {
                 continue;
             }
 
-            address = (uint16_t)(sequence * SPM_PAGESIZE);
-            expected_pages = (uint16_t)((manifest_size + SPM_PAGESIZE - 1U) / SPM_PAGESIZE);
-            if(sequence >= expected_pages || address >= manifest_size ||
-               (uint16_t)(address + length) > manifest_size || length == 0U) {
-                update_active = 0U;
-                status_error();
+            /*
+             * Every audio packet is transmitted twice.
+             * Ignore an already accepted duplicate.
+             */
+            if(sequence < expected_sequence) {
                 continue;
             }
 
-            /* All non-final pages must be complete. */
-            if(sequence + 1U < expected_pages && length != SPM_PAGESIZE) {
-                update_active = 0U;
-                status_error();
+            /*
+             * If this is ahead of the expected chunk, the expected
+             * chunk was lost. Ignore this packet and wait for sync.
+             */
+            if(sequence > expected_sequence) {
                 continue;
             }
 
-            write_flash_page(address, payload, length);
+            expected_chunks =
+                (uint16_t)((manifest_size + DATA_CHUNK_SIZE - 1U) /
+                           DATA_CHUNK_SIZE);
+
+            address = (uint16_t)(sequence * DATA_CHUNK_SIZE);
+
+            if(sequence >= expected_chunks ||
+               address >= manifest_size ||
+               length == 0U ||
+               length > DATA_CHUNK_SIZE ||
+               (uint16_t)(address + length) > manifest_size) {
+                continue;
+            }
+
+            /* Every chunk except the final one must contain 32 bytes. */
+            if(sequence + 1U < expected_chunks &&
+               length != DATA_CHUNK_SIZE) {
+                continue;
+            }
+
+            page_base =
+                (uint16_t)(address & (uint16_t)~(SPM_PAGESIZE - 1U));
+            page_offset = (uint8_t)(address & (SPM_PAGESIZE - 1U));
+
+            /*
+             * Beginning of a new AVR flash page:
+             * erase our RAM assembly buffer to FF.
+             */
+            if(page_offset == 0U) {
+                for(i = 0U; i < SPM_PAGESIZE; ++i) {
+                    page_buffer[i] = 0xFFU;
+                }
+            }
+
+            for(i = 0U; i < length; ++i) {
+                page_buffer[(uint8_t)(page_offset + i)] = payload[i];
+            }
+
             ++expected_sequence;
-            status_on(); _delay_ms(8); status_off();
+
+            /*
+             * Program flash after four 32-byte chunks, or after the
+             * final partial chunk of the application image.
+             */
+            if((uint16_t)(page_offset + length) >= SPM_PAGESIZE ||
+               expected_sequence == expected_chunks) {
+
+                write_flash_page(page_base,
+                                 page_buffer,
+                                 SPM_PAGESIZE);
+
+                /* Diagnostic: completed AVR flash pages. */
+                {
+                    uint16_t completed_pages =
+                        (uint16_t)(page_base / SPM_PAGESIZE) + 1U;
+
+                    eeprom_update_byte(
+                        (uint8_t *)EEPROM_PAGE_COUNT_LO,
+                        (uint8_t)(completed_pages & 0xFFU));
+
+                    eeprom_update_byte(
+                        (uint8_t *)EEPROM_PAGE_COUNT_HI,
+                        (uint8_t)(completed_pages >> 8));
+                }
+
+                status_on();
+                _delay_ms(8);
+                status_off();
+            }
+
             continue;
         }
 
         if(type == PACKET_END) {
-            uint16_t expected_pages = (uint16_t)((manifest_size + SPM_PAGESIZE - 1U) / SPM_PAGESIZE);
-            if(!update_active || length != 0U || sequence != expected_pages ||
-               expected_sequence != expected_pages) {
-                update_active = 0U;
-                status_error();
+            uint16_t expected_chunks =
+                (uint16_t)((manifest_size + DATA_CHUNK_SIZE - 1U) /
+                           DATA_CHUNK_SIZE);
+
+            if(!update_active || length != 0U ||
+               sequence != expected_chunks ||
+               expected_sequence != expected_chunks) {
+                /* Ignore invalid/incomplete END and wait for repeated copy. */
                 continue;
             }
 
@@ -470,7 +609,7 @@ int main(void)
             continue;
         }
 
-        update_active = 0U;
-        status_error();
+        /* Unknown packet type: ignore and resynchronize. */
+        continue;
     }
 }

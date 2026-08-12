@@ -303,7 +303,16 @@ int main(void)
 	{
 		uint8_t special_mode_active;
 
-		Transport_Process();
+		/*
+		 * During the startup split-learning window, discard external clock
+		 * ticks so transport playback cannot steal GATE1/GATE2 from the
+		 * two-yellow-LED learning indication.
+		 */
+		if(g_split_learn.active != 0U) {
+			(void)Transport_ConsumeTick();
+		} else {
+			Transport_Process();
+		}
 
 		/* Apply the physical voice switch before playback evaluates a switch
 		 * transition, so held LIVE notes are rebuilt using the new routing. */

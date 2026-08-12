@@ -28,6 +28,7 @@ LEAD_SILENCE = SAMPLE_RATE // 4
 TAIL_SILENCE = SAMPLE_RATE // 2
 PREAMBLE_EDGES = 160       # 20 ms
 PAGE_SIZE = 128
+DATA_CHUNK_SIZE = 32
 APP_LIMIT = 0x7000
 
 PACKET_MANIFEST = 0x10
@@ -98,7 +99,7 @@ def crc16_ccitt(data: bytes) -> int:
 
 
 def packet(ptype: int, sequence: int, payload: bytes) -> bytes:
-    if len(payload) > PAGE_SIZE:
+    if len(payload) > DATA_CHUNK_SIZE:
         raise ValueError("packet payload too large")
     body = bytes((ptype, sequence & 0xFF, (sequence >> 8) & 0xFF, len(payload))) + payload
     crc = crc16_ccitt(body)
@@ -182,14 +183,32 @@ def main():
 
     wb = WaveBuilder()
     wb.silence(LEAD_SILENCE)
-    wb.emit_packet(packet(PACKET_MANIFEST, 0xFFFF, manifest))
+    # Transmit every packet twice. The bootloader accepts the first valid
+    # copy and silently ignores the duplicate. This makes the audio transport
+    # tolerant of an isolated decoding error without requiring feedback.
+    manifest_packet = packet(PACKET_MANIFEST, 0xFFFF, manifest)
+
+    # Give the bootloader plenty of time to calibrate and acquire the
+    # beginning of the update. DATA does not start until all manifest
+    # repetitions have been transmitted.
+    for _ in range(16):
+        wb.emit_packet(manifest_packet)
 
     pages = (len(app) + PAGE_SIZE - 1) // PAGE_SIZE
-    for seq in range(pages):
-        chunk = app[seq*PAGE_SIZE:(seq+1)*PAGE_SIZE]
-        wb.emit_packet(packet(PACKET_DATA, seq, chunk))
+    chunks = (len(app) + DATA_CHUNK_SIZE - 1) // DATA_CHUNK_SIZE
 
-    wb.emit_packet(packet(PACKET_END, pages, b''))
+    for seq in range(chunks):
+        chunk = app[
+            seq*DATA_CHUNK_SIZE:
+            (seq+1)*DATA_CHUNK_SIZE
+        ]
+        data_packet = packet(PACKET_DATA, seq, chunk)
+        wb.emit_packet(data_packet)
+        wb.emit_packet(data_packet)
+
+    end_packet = packet(PACKET_END, chunks, b'')
+    wb.emit_packet(end_packet)
+    wb.emit_packet(end_packet)
     wb.silence(TAIL_SILENCE)
 
     out = args.output or args.hex.with_suffix('.wav')
@@ -199,6 +218,7 @@ def main():
     print(f"Application: {len(app)} bytes")
     print(f"CRC32:       0x{app_crc:08X}")
     print(f"Pages:       {pages}")
+    print(f"Chunks:      {chunks}")
     print(f"WAV:         {out}")
     print(f"Duration:    {duration:.1f} s")
 
