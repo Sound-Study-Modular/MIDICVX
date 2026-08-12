@@ -45,3 +45,5 @@
 extern volatile uint32_t	g_time;
 extern volatile uint8_t		g_midi_ch[2];
 extern volatile uint32_t	g_midi_clk_timeout;
+
+uint8_t SplitLearn_OnNoteOn(uint8_t note);

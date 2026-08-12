@@ -1,92 +1,70 @@
 # MIDICVX v1.0.1 User Manual
 
-MIDICVX is firmware for the Erica Synths DIY MIDI-to-CV hardware, extending the original MIDI/CV behavior with performance modes, arpeggiation, split routing, saved settings, and recovery controls.
+## Overview
 
-> This manual describes MIDICVX v1.0.1 behavior. The v1.0.1 release package should be treated as the authoritative firmware source when it differs from older development branches.
-
-## Hardware
-
-Target MCU: ATmega328/ATmega328P family at 16 MHz.
-
-The module provides two CV/GATE output channels, MIDI input, a PROGRAM button, status/gate LEDs, and the hardware voice switch.
+MIDICVX converts incoming MIDI notes to two CV/GATE channels and adds three performance modes: LIVE, MONO ARP, and DUAL ARP. It also supports a learned keyboard split, external transport clocking, persistent settings, and panic recovery.
 
 ## Startup split learning
 
-At startup MIDICVX opens a 2-second split-learning window.
+Every normal startup opens a 2-second split-learning window. Both yellow gate LEDs are held on during this window.
 
-- Both gate/yellow outputs indicate the learning state.
-- Play the MIDI note that you want to use as the lowest ARP note.
-- The first valid Note On received becomes the split note.
-- The selected split is saved immediately to EEPROM and survives power cycling.
-
-If no valid note is received during the learning window, normal operation continues using the stored/default split setting.
+- Play one MIDI note during the window to make that note the split point / lowest note of the upper ARP region.
+- The first valid Note On is saved immediately to EEPROM.
+- If you do not play a note during the window, MIDICVX keeps the previously saved split.
+- The external-clock startup regression is fixed in v1.0.1: incoming clock ticks are discarded during split learning so the yellow indication remains usable.
 
 ## Performance modes
 
-MIDICVX v1.0.1 has three performance modes:
+A long PROGRAM-button press cycles:
 
-1. **LIVE** — normal MIDI-to-CV performance behavior.
-2. **MONO ARP** — arpeggiated performance with the secondary output available for the live/bass routing defined by the firmware.
-3. **DUAL ARP** — two-output arpeggiated performance using the split/routing logic.
+`LIVE → MONO ARP → DUAL ARP → LIVE`
 
-Changing performance mode is treated as a musical boundary: active gates and pending retriggers are cleared before the new routing is established. Held MIDI-note state is preserved where appropriate.
+The selected performance mode is stored so it can survive a power cycle.
 
-Performance mode and ARP algorithm settings are stored in EEPROM.
+### LIVE
 
-## Voice switch
+LIVE preserves the normal MIDI-to-CV playing behavior of the original firmware. The physical voice switch controls the live routing/voice behavior.
 
-The physical voice switch remains a routing modifier. MIDICVX detects a switch change during operation and immediately rebuilds the output routing so stale gates are not left active.
+### MONO ARP
 
-## ARP algorithms
+MONO ARP provides one arpeggiated voice and one live split/bass voice according to the current split and physical voice-switch routing.
 
-MIDICVX retains the firmware's selectable arpeggiator algorithms. The currently selected algorithm is stored with the other playback settings so it can survive a restart.
+### DUAL ARP
 
-## LEDs
+DUAL ARP uses both CV/GATE outputs for arpeggiated performance. The learned split divides the keyboard into lower and upper regions and each region owns its output routing.
 
-The yellow output LEDs follow their corresponding gate outputs during normal performance. The red status LED is used for status/confirmation indications, including recovery confirmation.
+## ARP algorithm selection
 
-## Panic / recovery
+While in an ARP performance mode, a short PROGRAM press advances the arpeggiator algorithm. MIDICVX retains five algorithms: UP, DOWN, PING-PONG, RANDOM, and ORDER PLAYED. The algorithm selection is saved with the other playback settings.
 
-MIDICVX includes a panic reset for recovering from stuck notes or an invalid runtime performance state.
+## Physical voice switch
 
-Panic recovery:
+The hardware voice switch remains active in every performance mode. MIDICVX detects switch changes while running and rebuilds routing immediately so stale gates are not left behind.
 
-- forces GATE 1 LOW;
-- forces GATE 2 LOW;
-- resets MIDI/CV runtime state;
-- clears held-note state;
-- clears pending ARP/retrigger state;
-- resets transport timing state.
+## Yellow LEDs
 
-It intentionally preserves the selected performance mode, ARP algorithm, split point, and saved EEPROM configuration.
+The two yellow LEDs follow the actual GATE1 and GATE2 output state during normal use. In ARP modes they pulse with generated gates rather than merely following held MIDI notes. At startup both yellow LEDs are also used for the split-learning indication.
 
-The red status LED confirms the panic action. The yellow gate LEDs remain off during the confirmation.
+## Red status LED
 
-## MIDI clock and transport
+The red status LED indicates mode/confirmation/status behavior. Panic confirmation uses only the red LED so the gate outputs remain safely low.
 
-The firmware contains transport/clock handling used by the arpeggiator. External MIDI clock can therefore drive ARP timing when that transport mode is active. The playback engine resets stale transport timing when routing or performance state is rebuilt.
+## External clock / transport
 
-## Saved settings
+MIDICVX accepts transport clock events for ARP stepping. External clock is intentionally ignored during the short startup split-learning window, then normal transport processing resumes.
 
-MIDICVX uses EEPROM for persistent configuration. This includes MIDI/CV configuration and calibration inherited from the underlying firmware, plus MIDICVX playback settings such as the split and performance/ARP selections.
+## Panic reset
+
+Hold PROGRAM for about 8 seconds during normal operation to perform a panic reset. Panic forces both gates low, clears held MIDI/playback state, resets generated ARP state and transport timing, and preserves the selected mode, ARP algorithm, learned split, calibration, and EEPROM settings.
+
+## Persistent settings
+
+MIDICVX stores its playback settings in EEPROM. Split learning is committed immediately. Mode and ARP settings are also persisted by the firmware settings system.
 
 ## Calibration and configuration
 
-The original firmware calibration/configuration facilities remain part of the codebase. Do not overwrite AVR fuse or EEPROM settings casually when servicing a calibrated module.
+The original Erica Synths MIDI-to-CV calibration/configuration behavior remains part of the firmware. Avoid erasing EEPROM casually because it can contain calibration and MIDI configuration information.
 
-## Firmware updates
+## Updating firmware
 
-There are two fundamentally different update paths:
-
-- **Audio/WAV update** — for a module that already has the MIDICVX audio bootloader installed.
-- **ISP programming** — direct AVR programming using a USBasp or compatible programmer. This is also the recovery/install method when the bootloader is absent or damaged.
-
-See [PROGRAMMING.md](PROGRAMMING.md) and [WAV_UPDATES.md](WAV_UPDATES.md).
-
-## v1.0.1 release files
-
-The clean v1.0.1 package contains the application HEX (`firmware/midi_cv_x.hex`), audio update (`firmware/MIDICVX_v1.0.1.wav`), MIDICVX bootloader HEX, WAV-generation utility, and separate DIP/SMD programming scripts.
-
-## Safety when servicing
-
-Power the module only from a correctly wired Eurorack supply. Verify programmer orientation and ISP connections before programming. Do not alter fuse values unless you understand the bootloader layout and clock configuration: an incorrect fuse configuration can make normal ISP communication difficult or prevent the application from booting.
+If the MIDICVX WAV bootloader is already installed, use [WAV_UPDATES.md](WAV_UPDATES.md). For first-time installation, fuse/bootloader replacement, or recovery, use [PROGRAMMING.md](PROGRAMMING.md).

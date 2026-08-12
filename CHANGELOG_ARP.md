@@ -1,9 +1,3 @@
-# MIDICVX v0.3.0
+# MIDICVX ARP development history
 
-- Adds a real held-note bitmap for all 128 MIDI notes.
-- Adds LIVE and ARP UP playback modes.
-- Short Program-button press toggles LIVE/ARP UP.
-- Preserves original 3-second configuration hold and power-up calibration.
-- ARP UP advances once per six MIDI Clock bytes after MIDI START.
-- ARP uses existing calibrated CV/gate output routines.
-- Supports `make MCU=atmega328` and `make MCU=atmega328p`.
+MIDICVX developed from the original LIVE MIDI-to-CV behavior through UP, DOWN, PING-PONG, RANDOM, and ORDER-PLAYED ARP algorithms, then added MONO ARP and DUAL ARP performance modes with learned split routing.

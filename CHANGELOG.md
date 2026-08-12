@@ -1,16 +1,11 @@
 # Changelog
 
-## v0.2.0 — Playback pass-through
+## v1.0.1
+- Known-good WAV bootloader and application firmware.
+- Startup split-learning clock regression fixed.
+- Split, performance mode, and ARP settings persistence.
+- DIP ATmega328P and SMD ATmega328 programming scripts.
+- Public documentation and programming/recovery guides.
 
-- Added a real playback routing layer for Note On and Note Off messages.
-- Preserved the original MIDI channel and voice routing exactly.
-- Added no new button behavior, EEPROM settings, or playback modes.
-- Intended as a hardware-validated baseline before adding the arpeggiator.
-
-## v0.1.0 — Foundation
-
-- Preserved stock runtime behavior.
-- Added firmware metadata and versioning.
-- Added future EEPROM layout reservation.
-- Added 4 KiB bootloader reserve and build-time size guard.
-- Updated build/programming defaults for ATmega328 and USBasp `-B 100`.
+## Development history
+Earlier v0.x development established playback routing, ARP algorithms, external transport, dual-output routing, and the bootloader-reserved application layout.
