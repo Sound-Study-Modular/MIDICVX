@@ -1,296 +1,462 @@
 # MIDICVX v1.0.1 — User Manual
 
-MIDICVX is an expanded open-source firmware for the Erica Synths DIY MIDI-CV hardware. It keeps the useful core of the original module — MIDI-to-CV conversion, two CV/GATE voices, glide, configurable MIDI operation and clock-related functionality — and adds a performance-oriented arpeggiator, two-voice ARP routing, a dedicated bass voice, external transport clocking, persistent settings, startup split learning, and audio/WAV firmware updates.
+MIDICVX is expanded open-source firmware for the Erica Synths DIY MIDI-CV hardware. It keeps the module's core MIDI-to-CV functions and adds three performance modes, five arpeggiator patterns, split learning, bass/ARP routing, external clocked arpeggiation, persistent settings, panic recovery, and WAV firmware updates.
 
-> **Quick idea:** MIDI comes in; MIDICVX decides which notes belong to each voice; the module sends pitch CV and gates to your Eurorack voices.
+This manual starts with the things you need while actually playing: **the three modes, how to enter them, every front-panel control and button gesture, and the LED indications.** Detailed explanations and programming instructions follow afterward.
 
-## 1. What the hardware does
+---
 
-The original Erica Synths DIY MIDI-CV is a compact duophonic MIDI interface. Erica Synths describes the original hardware as supporting two CV/GATE outputs, one- or two-channel MIDI configuration, analogue glide on both channels, a configurable modulation output, and MIDI clock functionality.
+# 1. Start here — the three performance modes
 
-MIDICVX uses that same hardware as a much more performance-oriented MIDI/CV brain.
+MIDICVX has **three main performance modes**:
 
-### Main connections
+1. **LIVE** — normal MIDI-to-CV playing.
+2. **MONO ARP** — one arpeggiated part plus a dedicated live bass part.
+3. **DUAL ARP** — two arpeggiated voices using the two CV/GATE outputs.
+
+You move through them with the **PROGRAM** button.
 
 ```text
-MIDI keyboard / DAW / sequencer
-              │
-              ▼
-        ┌─────────────┐
-        │   MIDICVX   │
-        └─────────────┘
-          │         │
-       CV1/GATE1  CV2/GATE2
-          │         │
-          ▼         ▼
-       Voice 1    Voice 2
+                 hold PROGRAM ~0.7 s
+
+        ┌──────────┐      ┌──────────┐      ┌──────────┐
+        │   LIVE   │ ───► │ MONO ARP │ ───► │ DUAL ARP │
+        └──────────┘      └──────────┘      └──────────┘
+             ▲                                      │
+             └──────────────────────────────────────┘
+
+                  then back to LIVE
 ```
 
-Pitch CV is intended for normal 1 V/oct Eurorack oscillators. Gate outputs tell envelopes, synth voices, etc. when a note is active.
+You do **not** need to power-cycle to change modes. Hold PROGRAM until the mode changes, then release it. Each long hold advances one step through the cycle.
 
-## 2. Original Erica Synths functionality retained
+## LIVE
 
-The underlying module was designed to emulate traditional monophonic and duophonic synthesizer behaviour. Its hardware provides:
+**Status LED: off during normal operation.**
+
+Use LIVE when you want MIDICVX to behave like a conventional MIDI-to-CV interface. Your keyboard, sequencer or DAW directly controls the CV/GATE outputs.
+
+The physical **1 VOICE / 2 VOICE** switch selects the original monophonic or duophonic-style voice routing.
+
+## MONO ARP
+
+**Status LED: steadily on.**
+
+MONO ARP turns the upper musical material into an arpeggio while retaining the lowest-note region as a separate bass part. This is the easiest way to turn one keyboard performance into **bass + arpeggio**.
+
+## DUAL ARP
+
+**Status LED: blinking.**
+
+DUAL ARP uses both CV/GATE channels for arpeggiated material. It is intended for driving two modular voices from the held MIDI notes.
+
+The blinking status LED is deliberately free-running; it identifies DUAL ARP mode and is not meant to flash in time with the external clock.
+
+---
+
+# 2. Quick control reference — learn this first
+
+## PROGRAM button
+
+| Action | What it does |
+|---|---|
+| **Short press in LIVE** | No ARP-pattern change; LIVE playing continues. |
+| **Short press in MONO ARP or DUAL ARP** | Selects the next arpeggiator pattern. |
+| **Hold about 0.7 second** | Advances **LIVE → MONO ARP → DUAL ARP → LIVE**. |
+| **Hold about 8 seconds** | Emergency **PANIC**: clears active notes/gates and flashes the red/status LED three times. |
+| **Hold PROGRAM while powering on** | Enters the original Erica-style **CV calibration mode**. |
+
+### Important note about the original Erica configuration gesture
+
+The original Erica Synths firmware used a roughly **2-second PROGRAM hold** to enter MIDI-channel/MOD configuration. MIDICVX v1.0.1 now uses the long-hold gesture for performance-mode switching. Although the configuration routines remain in the source, the current v1.0.1 button handling does **not expose the old normal-runtime configuration gesture in the same way**. This manual therefore does not tell you to use the original 2-second gesture as though it still behaved exactly like stock firmware.
+
+That distinction matters: the **hardware is based on the original Erica module**, but the MIDICVX performance controls are different.
+
+## 1 VOICE / 2 VOICE switch
+
+In LIVE mode this retains the familiar Erica Synths voice-selection concept:
+
+- **1 VOICE** — monophonic playing, with highest-note priority in the original design.
+- **2 VOICE** — two-note/duophonic operation using CV/GATE 1 and CV/GATE 2.
+
+MIDICVX watches the physical switch continuously. If you change it while holding notes in LIVE mode, the firmware rebuilds the held-note routing rather than waiting for you to play another MIDI note.
+
+In the ARP modes the switch participates in the firmware's current routing behavior, while the selected performance mode determines whether you are in MONO ARP or DUAL ARP operation.
+
+## GLIDE knob
+
+GLIDE is an **analogue** control and affects both pitch-CV channels. Turn it down for immediate pitch changes or up for portamento/slides between notes. The original Erica specification gives a glide range of approximately 0–2 seconds.
+
+## MIDI IN
+
+Connect the MIDI output of your keyboard, sequencer, hardware controller or MIDI interface here.
+
+## CV1 / GATE1 and CV2 / GATE2
+
+These are the two pitch and gate pairs that drive your modular voices. Pitch CV is intended for normal 1 V/oct oscillator inputs. The original Erica hardware specifies a 0–8 V CV range and 5 V gate level.
+
+## Yellow gate LEDs
+
+The yellow LEDs indicate the **actual gate outputs**.
+
+- In LIVE they follow live gate activity.
+- In ARP they pulse with the generated ARP gates rather than simply remaining on while MIDI keys are held.
+- During startup split learning, **both yellow LEDs are held on** to tell you the module is waiting for a split note.
+
+## Status/MIDI LED
+
+In normal performance it also tells you which MIDICVX mode you are in:
+
+```text
+LIVE       = OFF
+MONO ARP   = ON steady
+DUAL ARP   = BLINKING
+```
+
+When you change ARP algorithms, this LED temporarily flashes the algorithm number, then returns to the normal mode indication.
+
+---
+
+# 3. The five ARP patterns
+
+When you are in either ARP mode, **short-press PROGRAM** to move to the next pattern.
+
+There are five patterns:
+
+1. **UP**
+2. **DOWN**
+3. **PING-PONG**
+4. **RANDOM**
+5. **ORDER PLAYED**
+
+The status LED acknowledges the selected pattern with **1 to 5 quick flashes**.
+
+```text
+1 flash   = UP
+2 flashes = DOWN
+3 flashes = PING-PONG
+4 flashes = RANDOM
+5 flashes = ORDER PLAYED
+```
+
+Example with C3, E3, G3 and B3 held:
+
+```text
+UP:          C3 → E3 → G3 → B3 → ...
+DOWN:        B3 → G3 → E3 → C3 → ...
+PING-PONG:   C3 → E3 → G3 → B3 → G3 → E3 → ...
+RANDOM:      notes selected in changing/random order
+ORDER PLAYED: follows the order in which you originally pressed the notes
+```
+
+---
+
+# 4. Startup split learning
+
+Every normal startup begins with a **2-second split-learning window**.
+
+Both yellow gate LEDs turn on. While they are on, play the MIDI note you want to use as the split/reference note.
+
+```text
+POWER ON
+   │
+   ▼
+Both yellow LEDs ON
+   │
+   ├── Play a MIDI note ──► save that note as the split
+   │
+   └── Play nothing ──────► keep the previously saved split
+```
+
+The **first valid MIDI Note On** during the window becomes the new split and is saved. The status LED gives a brief acknowledgement.
+
+If you do nothing, the learning window simply closes and MIDICVX keeps the previously stored split.
+
+### You can leave external clock connected
+
+MIDICVX v1.0.1 specifically fixes a startup problem found during development. With earlier code, a running external clock could interfere with the yellow split-learning indication and make the window appear almost instantaneous.
+
+In v1.0.1 external transport ticks are discarded while split learning is active. You can therefore power up with the clock cable already patched and still get the full learning window.
+
+---
+
+# 5. Original Erica Synths features at a glance
+
+The MIDICVX hardware began as the Erica Synths DIY MIDI-CV. The original module provides:
 
 - two pitch CV outputs;
-- two GATE outputs;
-- one-voice and two-voice operation;
+- two Gate outputs with gate LEDs;
 - MIDI input;
-- analogue GLIDE for both pitch channels;
-- MIDI clock-related I/O on the hardware;
-- configurable MIDI operation.
+- one-voice and two-voice operation;
+- one- or two-MIDI-channel configuration in the original firmware;
+- configurable MOD output for modulation wheel or key velocity in the original firmware;
+- analogue glide on both pitch channels;
+- 4 ppq MIDI clock output in the original design;
+- high-accuracy MIDI-to-CV conversion;
+- CV calibration.
 
-The original Erica specification lists a 0–8 V CV range, 5 V gate/clock level, and approximately 0–2 seconds of analogue glide.
+MIDICVX keeps the same physical platform while repurposing and extending its firmware for live performance and arpeggiation.
 
-Because glide is analogue, it remains immediately useful with MIDICVX: turn it up for portamento between MIDI notes and down for sharply stepped pitch changes.
-
-## 3. LIVE mode
-
-LIVE mode is the straightforward keyboard-to-CV mode and preserves the familiar MIDI-CV behaviour.
-
-Play your MIDI keyboard and the module immediately translates incoming notes into pitch CV and gates. This is the mode to use when you want to play the modular normally rather than have MIDICVX generate an arpeggio.
-
-### One-voice example
+The original Erica documentation specifies approximately:
 
 ```text
-Keyboard:     C3 ───── E3 ───── G3
-                 MIDI
-                   │
-                   ▼
-MIDICVX:      CV + GATE
-                   │
-                   ▼
-Oscillator → Filter → VCA
+Pitch CV range:       0–8 V
+Gate / clock level:   5 V
+Maximum CV deviation: 0.001 V / 1 cent
+Glide:                0–2 seconds
+Width:                 6 HP
+Depth:                 35 mm
 ```
 
-### Two-voice example
+---
 
-With two voices available, a chord can be divided across the two CV/GATE pairs so two independent Eurorack voices can be played from the same MIDI performance.
+# 6. LIVE mode in detail
+
+LIVE is where to begin when checking a new build or learning the module.
+
+Connect:
 
 ```text
-             MIDI notes
-           C3  E3  G3  C4
-                 │
-            ┌────┴────┐
-            ▼         ▼
-         CV/GATE 1  CV/GATE 2
-            │         │
-         Synth A    Synth B
+MIDI keyboard
+     │
+     ▼
+  MIDICVX
+     │
+     ├── CV1 ───► oscillator 1V/oct
+     └── GATE1 ─► envelope gate
 ```
 
-The physical voice switch selects the appropriate one-/two-voice behaviour. MIDICVX also rebuilds held LIVE notes when the voice configuration changes, so switching modes while playing behaves sensibly.
+Play the keyboard. Pitch should track the MIDI notes and the yellow gate LED should follow the gate.
 
-## 4. ARP mode
+Turn GLIDE up and you will hear the pitch slide between notes. Turn it fully down for normal stepped pitch changes.
 
-MIDICVX adds a full arpeggiator layer while keeping LIVE mode available.
+### LIVE with two voices
 
-### Entering and leaving ARP
-
-Use a **long press of the PROGRAM button** to toggle between LIVE and ARP operation.
-
-- **LIVE:** normal MIDI-to-CV playing.
-- **ARP:** held MIDI notes feed the arpeggiator.
-
-The status LED provides feedback during the hold so you do not have to guess when the long-press threshold has been reached.
-
-### Selecting an arpeggiator pattern
-
-While ARP is active, use a **short PROGRAM press** to move through the available arpeggiator algorithms.
-
-MIDICVX preserves the project's five arpeggiator algorithms. Changing the pattern changes the order in which the held notes are visited; it does not require you to release the chord first.
-
-### Simple ARP example
-
-Hold:
+Move the physical switch to 2 VOICE and patch both CV/GATE pairs:
 
 ```text
-C3 + E3 + G3 + B3
+                 ┌── CV1/GATE1 ─► Modular voice A
+MIDI ─► MIDICVX ─┤
+                 └── CV2/GATE2 ─► Modular voice B
 ```
 
-An upward pattern produces the musical idea:
+This is useful for classic duophonic playing from one MIDI keyboard.
 
-```text
-C3 → E3 → G3 → B3 → C3 → E3 → ...
-```
+---
 
-Another ARP algorithm may traverse those same held notes in a different order.
+# 7. MONO ARP in detail — bass + arpeggio
 
-## 5. External clock / transport
+MONO ARP is one of the major MIDICVX additions.
 
-MIDICVX can advance the arpeggiator from the module's external clock/transport input rather than relying only on MIDI note timing.
+The idea is simple: **keep the low musical part as bass and arpeggiate the notes above it.**
 
-A qualified LOW-to-HIGH clock edge advances transport. This makes it practical to synchronize MIDICVX to a Eurorack clock source, sequencer or other rhythmic system.
-
-```text
-Master Clock ─────► MIDICVX clock input
-                       │
-MIDI chord ───────────►│
-                       ▼
-                 clocked arpeggio
-```
-
-### Example
-
-Patch a clock divider or sequencer clock to MIDICVX and hold C–E–G on a MIDI keyboard. Each incoming clock pulse advances the ARP by one transport step. Change the clock rate and the arpeggio follows it.
-
-## 6. Split learning at startup
-
-One of MIDICVX's most useful additions is its learned split point.
-
-At normal startup the module enters a short split-learning window. The **first valid MIDI Note On** received during this window becomes the selected lowest ARP note / split reference. The learned value is then retained by the firmware's settings system.
-
-### Visual feedback
-
-The two yellow gate LEDs provide the startup learn indication. Once a valid note is received, the module acknowledges the selection and leaves learn mode.
-
-### Example
-
-Suppose you want notes below C3 to act as your bass region and C3 upward to feed the arpeggiator. During startup learning, play the desired boundary note. MIDICVX uses that learned point for subsequent note routing.
-
-### External clock at startup
-
-MIDICVX v1.0.1 specifically protects the split-learning period from incoming external clock activity. Earlier development builds could allow clock transport to interfere with the yellow learn indication, making the learning window appear extremely short when a clock cable was already connected at power-up. v1.0.1 discards those transport ticks while split learning is active.
-
-You can therefore leave the clock patched when powering the system on.
-
-## 7. One-voice ARP + dedicated bass
-
-This is one of the major MIDICVX performance features.
-
-In one-voice ARP operation, the main output arpeggiates the upper musical material while the second CV/GATE pair acts as a LIVE-style bass voice using the lowest held note.
-
-Conceptually:
-
-```text
-Held notes:  C2   G2   C3   E3   G3
-             │              │    │
-             │              └────┴──► ARP voice
-             │
-             └───────────────────────► Bass voice
-```
-
-The lowest note is reserved for bass rather than also appearing in the main arpeggio.
-
-### Musical example
-
-Hold:
+Suppose you hold:
 
 ```text
 C2 + C3 + E3 + G3
 ```
 
-Patch the bass CV/GATE pair to a bass oscillator and envelope, and the ARP pair to a brighter synth voice. C2 can sustain/follow your playing as the bass while C3/E3/G3 form the arpeggio.
-
-This lets one MIDI keyboard performance create something much closer to a complete two-part modular arrangement.
-
-## 8. Two-voice ARP
-
-Two-voice ARP mode expands the idea further by distributing incoming musical material between both CV/GATE voices rather than simply duplicating one arpeggio.
-
-MIDICVX can accept multiple held notes — including chords sent from a DAW — and divide them into lower and upper musical groups for the two outputs. This makes dense MIDI material useful with a pair of monophonic Eurorack voices.
+MIDICVX can treat the performance conceptually as:
 
 ```text
-Incoming chord
+C2                  C3  E3  G3
+│                    │   │   │
+▼                    └───┴───┴──► ARP
+BASS
+```
+
+Patch the bass CV/GATE pair to a bass oscillator/envelope and the ARP pair to a second synth voice. One MIDI hand position can now produce a bass foundation plus a moving arpeggio.
+
+The lowest note is reserved from the main ARP pool in this performance concept, preventing the bass note from constantly reappearing as part of the upper arpeggio.
+
+### Example patch
+
+```text
+                         ┌──► Bass oscillator → filter → VCA
+MIDI chord ─► MIDICVX ───┤
+                         └──► ARP oscillator  → filter → VCA
+```
+
+This works particularly well when the bass voice has a short amount of glide and the ARP voice has a brighter envelope.
+
+---
+
+# 8. DUAL ARP in detail
+
+DUAL ARP is for using both CV/GATE channels as active arpeggiated voices.
+
+Feed MIDICVX a larger chord from a keyboard or DAW and the firmware can divide the held musical material between its two output engines.
+
+```text
+Incoming MIDI notes
 C2 G2 C3 E3 G3
-      │
-      ▼
-  MIDICVX split
-   │         │
- lower      upper
- notes      notes
-   │         │
-CV/GATE    CV/GATE
- voice A    voice B
+       │
+       ▼
+    MIDICVX
+    /     \
+   ▼       ▼
+ARP A     ARP B
+   │       │
+CV/GATE1 CV/GATE2
 ```
 
-The actual output assignment follows the firmware's current voice-routing rules, while the important musical concept is that the two voices receive separate note pools instead of merely mirroring each other.
+This is especially useful with two contrasting Eurorack voices. For example, patch one output to a low, rounded oscillator voice and the other to a bright pluck.
 
-## 9. Gate LEDs
+The status LED blinks whenever DUAL ARP is selected so you can distinguish it immediately from MONO ARP.
 
-The yellow LEDs represent the actual gate activity of the corresponding outputs.
+---
 
-In LIVE mode they behave like normal MIDI gate indicators. In ARP operation they pulse with the generated arpeggiated gates rather than simply staying illuminated for as long as the original MIDI keys remain held.
+# 9. External clock and transport
 
-That makes the LEDs useful diagnostics: if you can see a gate pulse, MIDICVX is actually commanding that output to fire.
-
-## 10. Panic / emergency note reset
-
-If notes or gates ever become stuck because of a disconnected MIDI cable, unusual MIDI source behaviour, or experimentation, MIDICVX includes an emergency reset gesture.
-
-**Hold PROGRAM for approximately eight seconds** during normal operation to invoke the panic/reset behaviour. This clears active note/gate state so you can continue without power-cycling the rack.
-
-## 11. Using glide
-
-The GLIDE control is analogue and works after MIDI has been converted to pitch CV.
-
-At minimum glide, pitches change almost immediately:
+MIDICVX can advance its ARP engine from an external clock signal. Each qualified low-to-high clock transition advances transport.
 
 ```text
-C ┌─────┐
-  │     └───── G
+MIDI chord ───────────────► MIDICVX
+                               ▲
+                               │
+Modular clock / divider ───────┘
 ```
 
-With glide increased, the voltage travels smoothly between pitches:
+This allows the harmony to come from MIDI while the rhythm comes from the modular system.
+
+### Example
+
+Hold C–E–G on a MIDI keyboard and patch your master clock to MIDICVX. Each incoming pulse advances the arpeggio. Change the clock division and the same held chord becomes a slower or faster pattern without changing the notes.
+
+---
+
+# 10. Panic — clearing stuck notes
+
+If a MIDI cable is disconnected at the wrong moment or an external device leaves a note hanging, hold **PROGRAM for about 8 seconds**.
+
+MIDICVX performs an emergency runtime reset:
+
+- both gates are forced low;
+- active MIDI/playback note state is cleared;
+- ARP engine state is reset;
+- your selected mode, ARP algorithm, split and saved settings are retained;
+- the status LED flashes three times to confirm the panic action.
+
+This lets you recover without cycling power.
+
+---
+
+# 11. Calibration mode
+
+MIDICVX retains the original power-up calibration path.
+
+To enter it:
+
+1. Power the module off.
+2. Hold **PROGRAM**.
+3. Power the module on while continuing to hold PROGRAM.
+4. The status LED indicates calibration mode.
+
+The original Erica calibration procedure uses a well-tracking 1 V/oct oscillator and chromatic tuner. CV1 is connected to the oscillator, and MIDI notes are used to correct scaling across octaves. PROGRAM advances/exits the calibration stages and the calibration is saved.
+
+For a new build, calibration should be treated as an installation/service procedure rather than something you normally change during a performance.
+
+---
+
+# 12. Original Erica MIDI-channel and MOD configuration
+
+For reference, the **stock Erica Synths firmware** allowed the user to hold PROGRAM for about two seconds, then select MIDI channel(s) from the keyboard. C represented channel 1, C# channel 2, D channel 3, and so on through channels 1–12. Two notes selected a two-channel setup. The next configuration stage selected whether MOD represented modulation-wheel CV or key velocity.
+
+That is useful historical information when reading the original Erica manual, but **do not confuse that stock-firmware button map with MIDICVX v1.0.1**. MIDICVX uses the PROGRAM long-hold for its three performance modes, and the current v1.0.1 runtime button logic does not expose the original configuration gesture unchanged.
+
+---
+
+# 13. Gate LEDs and mode LED
+
+The LEDs are useful enough that you can diagnose much of the module without a meter.
+
+### Yellow LEDs
+
+They follow the real gate outputs. If an ARP gate is firing, the corresponding yellow LED pulses. If the yellow LED is pulsing but your envelope is not responding, troubleshoot the patch after MIDICVX rather than the MIDI input.
+
+At startup both yellow LEDs intentionally remain on during split learning.
+
+### Status LED
+
+Remember this simple code:
 
 ```text
-C ─────╱───── G
+OFF      LIVE
+ON       MONO ARP
+BLINK    DUAL ARP
 ```
 
-Try a small amount on the bass voice for classic monosynth phrasing, or a longer setting on an ARP voice for sliding sequences.
+A temporary series of 1–5 fast flashes indicates the selected ARP algorithm.
 
-## 12. Patch recipes
+---
+
+# 14. Patch recipes
 
 ### Classic monosynth
 
-MIDI keyboard → MIDICVX → CV1 to oscillator pitch, GATE1 to envelope gate. Keep ARP off and use GLIDE to taste.
+Use LIVE, 1 VOICE. Patch CV1 to oscillator pitch and GATE1 to an envelope. Add GLIDE to taste.
+
+### Classic duophonic patch
+
+Use LIVE, 2 VOICE. Patch both CV/GATE pairs to two complete synth voices.
 
 ### Bass + arpeggio
 
-Patch one CV/GATE pair to a bass voice and the ARP output to a second oscillator/voice. Hold a low root plus a chord above it. The lowest note becomes the bass while the upper notes animate the second voice.
+Select MONO ARP. Hold a low root plus several notes above it. Patch the bass output to a low voice and the ARP output to a second voice.
 
-### DAW chord animator
+### Two-voice animated chord
 
-Send MIDI chords from your DAW into MIDICVX. Enable ARP and clock the module from your modular master clock. The DAW supplies harmony while Eurorack supplies the rhythm.
+Select DUAL ARP, hold four or five notes, and patch both output pairs to different voices. Try different ARP patterns with short PROGRAM presses.
 
-### Clock-divider experiment
+### DAW harmony + modular rhythm
 
-Send the same master clock through different divisions before MIDICVX. A slower division creates spacious arpeggios; faster divisions create rapid patterns without changing the MIDI chord.
+Send sustained chords from a DAW over MIDI, select an ARP mode, then clock MIDICVX from the modular rack. The DAW controls harmony while the rack controls rhythmic advancement.
 
-## 13. Firmware updates by WAV audio
+### Order-played pattern
 
-Once the MIDICVX WAV bootloader has been installed, normal firmware updates no longer require opening the case and attaching an AVR ISP programmer.
+Select ORDER PLAYED and deliberately press chord tones in a non-scalar order. MIDICVX uses your performance order as the pattern source.
 
-The release firmware includes:
+---
+
+# 15. Firmware updates by WAV
+
+Once the MIDICVX WAV bootloader is installed, application firmware can be updated without reconnecting an ISP programmer.
+
+The release file is:
 
 ```text
 firmware/MIDICVX_v1.0.1.wav
 ```
 
-Play the update WAV into the bootloader using a clean, unprocessed audio signal. Do **not** normalize, EQ, compress, time-stretch, convert to a lossy format, add fades, or otherwise alter the file. The WAV is encoded data, not music.
+The WAV is **encoded firmware data**, not ordinary audio. Play the original file through a clean, wired audio path. Do not normalize, EQ, compress, time-stretch, add fades, convert it to MP3, or otherwise process it.
 
-Use a reliable playback device and begin with a sensible strong output level. Follow the bootloader's LED feedback through the transfer. Allow the module to complete the update and reboot before interrupting power.
+Allow the update to finish and the module to reboot before removing power.
 
-If an audio update fails, simply return to the bootloader and retry with the original WAV file and a clean signal path.
+If an update fails, retry with the untouched WAV and a clean playback path.
 
-## 14. Initial programming with USBasp
+---
 
-A blank/replacement ATmega requires ISP programming before WAV updates are available.
+# 16. Initial programming and recovery with USBasp
 
-The repository includes two scripts:
+A blank MCU, replacement MCU, or processor with a missing bootloader must first be programmed through ISP.
+
+The repository contains two scripts:
 
 ```text
 programmers/program_DIP_328P.sh
 programmers/program_SMD_328.sh
 ```
 
-They are intentionally separate because supported boards use two MCU variants:
+They correspond to the two tested processor variants:
 
-- DIP **ATmega328P**, signature `1E 95 0F`;
-- SMD **ATmega328**, signature `1E 95 14`.
+```text
+DIP ATmega328P   signature 1E 95 0F
+SMD ATmega328    signature 1E 95 14
+```
 
-The scripts verify the processor signature before writing. This is an important safeguard against accidentally programming the wrong target.
+The scripts check the device signature before writing so that the wrong target is not programmed accidentally.
 
-The known working MIDICVX fuse configuration used for the finished installation is:
+The known working MIDICVX fuse configuration is:
 
 ```text
 LFUSE = FF
@@ -298,89 +464,123 @@ HFUSE = D8
 EFUSE = FD
 ```
 
-The programming process installs both the application firmware and the WAV bootloader. Once that has succeeded, future application updates can normally be delivered by WAV.
+The ISP installation writes the application and WAV bootloader. After that, normal application updates can be delivered by WAV.
 
-## 15. What each firmware file is for
+---
+
+# 17. What the release files are
 
 ```text
 firmware/
-├── midi_cv_x.hex          AVR application firmware
-└── MIDICVX_v1.0.1.wav     audio-encoded firmware update
+├── midi_cv_x.hex          application firmware for ISP programming
+└── MIDICVX_v1.0.1.wav     audio-encoded application update
 
 bootloader/
 └── midicvx_bootloader.hex WAV-update bootloader
 
 programmers/
-├── program_DIP_328P.sh    USBasp installer for ATmega328P
-└── program_SMD_328.sh     USBasp installer for ATmega328
+├── program_DIP_328P.sh    USBasp installer for DIP ATmega328P
+└── program_SMD_328.sh     USBasp installer for SMD ATmega328
 ```
 
-If the module already has the MIDICVX bootloader, most users only need the WAV.
+If your module already has the MIDICVX WAV bootloader, the WAV is normally all you need for an application update.
 
-If you are building a module from scratch, replacing the MCU, or recovering a processor whose bootloader has been erased, use the appropriate USBasp programming script.
+---
 
-## 16. Troubleshooting
+# 18. Troubleshooting
 
-### MIDI notes do nothing
+### I don't know which performance mode I'm in
 
-Check MIDI cabling and MIDI source configuration first. Then verify that a gate LED responds. If the gate LED responds but the synth does not, inspect the CV/GATE patch between MIDICVX and the voice.
+Look at the status LED: **off = LIVE, steady = MONO ARP, blinking = DUAL ARP**.
+
+### I can't get into the next mode
+
+Hold PROGRAM for roughly 0.7 second. Do not just tap it. One completed long hold advances one mode.
+
+### A short PROGRAM press does nothing
+
+That is normal in LIVE. Short presses select ARP algorithms only while an ARP mode is active.
+
+### The yellow LEDs are both on immediately after startup
+
+That is split learning, not a fault. Play the desired split note, or wait about two seconds to retain the stored split.
+
+### Split learning becomes too short when clock is connected
+
+That was a development regression. v1.0.1 suppresses transport processing during the startup learning window. Confirm that the installed application is the current v1.0.1 build.
 
 ### ARP is not moving
 
-Confirm that ARP mode is active and that notes are held. If using external transport, confirm that a valid clock is reaching the clock input.
+Confirm that an ARP mode is selected and notes are held. If you are using external transport, verify that a valid clock reaches the input.
 
-### Bass plays the wrong musical region
+### A note or gate is stuck
 
-Recheck the learned startup split point and the notes you are holding. Remember that the dedicated bass behaviour is based on the lower/lowest-note routing rules.
+Hold PROGRAM for about eight seconds for PANIC.
 
-### Yellow LEDs disappear almost instantly during startup
+### Gate LED flashes but my synth voice does not sound
 
-That was a development regression associated with an already-running external clock. The v1.0.1 startup clock fix prevents transport processing from stealing the split-learning gate/LED indication. Make sure the installed application is the current v1.0.1 build.
+MIDICVX is commanding the gate. Check the patch cable, envelope, VCA and oscillator path after the module.
 
 ### WAV update will not take
 
-Use the original unmodified WAV, disable audio enhancements, and retry with a clean wired audio path. Avoid Bluetooth, streaming services, sample-rate effects, crossfades and other processing that can alter the encoded waveform.
+Use the untouched WAV, a wired playback path and no audio processing. Avoid Bluetooth and any software that may resample, normalize or alter the file.
 
-### Completely unresponsive MCU
+### MCU is completely unresponsive
 
-Use USBasp/ISP and the appropriate DIP or SMD programming script. Confirm the processor signature before allowing any write operation.
+Use USBasp/ISP with the correct DIP or SMD programming script and verify the processor signature before writing.
 
-## 17. MIDICVX in one picture
+---
+
+# 19. MIDICVX in one picture
 
 ```text
-                       ┌──────────────────────┐
-MIDI keyboard / DAW ──►│       MIDICVX        │◄── External clock
-                       │                      │
-                       │ LIVE      ARP        │
-                       │  │         │         │
-                       │  │    ┌────┴────┐    │
-                       │  │   bass     arp    │
-                       │  │    /     split    │
-                       └──┼────┼──────┼───────┘
-                          │    │      │
-                          ▼    ▼      ▼
-                       CV/GATE outputs
-                          │    │
-                          ▼    ▼
-                      Modular voices
+                           PROGRAM
+                     long hold cycles modes
+                              │
+                              ▼
+MIDI ─────────────────► ┌─────────────┐ ◄──────── External clock
+                        │   MIDICVX   │
+                        │             │
+                        │ LIVE        │
+                        │ MONO ARP    │
+                        │ DUAL ARP    │
+                        └──────┬──────┘
+                               │
+                     ┌─────────┴─────────┐
+                     ▼                   ▼
+                 CV1 / GATE1         CV2 / GATE2
+                     │                   │
+                     ▼                   ▼
+                Modular voice A     Modular voice B
 ```
 
-## 18. A good first session
+---
 
-1. Connect MIDI IN to a keyboard or DAW.
-2. Connect CV1/GATE1 to one synth voice.
-3. Power on and choose the desired split note during the startup learn indication.
-4. Play in LIVE mode and confirm pitch, gate and glide.
-5. Long-press PROGRAM to enter ARP.
-6. Hold three or four notes.
-7. Short-press PROGRAM to hear the different ARP algorithms.
-8. Connect an external clock and listen to the arpeggio lock to your modular rhythm.
-9. Add the second CV/GATE voice and try bass + ARP or two-voice operation.
+# 20. Five-minute first session
 
-Once those steps make sense, the module becomes very immediate: **LIVE for direct playing; ARP for generated movement; split/bass routing for two-part performances; external clock for modular synchronization.**
+1. Connect MIDI IN to a keyboard.
+2. Patch CV1/GATE1 to a synth voice.
+3. Power up. While both yellow LEDs are on, either play your desired split note or wait to keep the stored split.
+4. You begin in **LIVE**. Confirm normal pitch and gate response.
+5. Hold PROGRAM about 0.7 second: **MONO ARP**. The status LED becomes steady.
+6. Hold several notes and listen to the ARP/bass behavior.
+7. Tap PROGRAM to try the five ARP patterns; count the LED flashes.
+8. Hold PROGRAM again: **DUAL ARP**. The status LED now blinks.
+9. Patch the second CV/GATE pair to another synth voice.
+10. Add external clock if desired.
+11. Hold PROGRAM once more to return to **LIVE**.
+
+If you remember only one thing, remember this:
+
+```text
+                 PROGRAM ~0.7 s
+
+LIVE  ─────────►  MONO ARP  ─────────►  DUAL ARP  ─────────►  LIVE
+OFF LED            STEADY LED             BLINKING LED
+```
 
 ---
 
 ## Project lineage
 
-MIDICVX is based on the open-source Erica Synths DIY MIDI-CV platform. Erica Synths' original design and documentation remain the reference for the physical hardware, assembly and original electrical specifications. MIDICVX adds the firmware behaviour described in this manual.
+MIDICVX is based on the open-source Erica Synths DIY MIDI-CV platform. Erica Synths' original documentation remains the reference for the physical hardware, assembly, electrical specifications and original firmware behavior. MIDICVX adds and changes the performance firmware behavior described in this manual.
