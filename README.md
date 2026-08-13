@@ -77,3 +77,18 @@ make flash                     # avrdude -c dragon_isp -P usb
 make flash PROGRAMMER=usbasp   # or another programmer
 make fuses                     # LFUSE=0xFF HFUSE=0xD1 EFUSE=0xFD
 ```
+---
+
+## Programming and WAV Firmware Updates
+
+MIDICVX supports audio firmware updates through the CLOCK input.
+
+For complete instructions covering AVR programming, ATmega328 and ATmega328P support, production fuse settings, startup modes, recovery, and WAV firmware updates, see:
+
+**[Programming and Firmware Updates](docs/PROGRAMMING_AND_UPDATES.md)**
+
+Quick startup reference:
+
+- **Normal power-on:** normal MIDICVX operation
+- **PROGRAM + 1 VOICE at power-on:** MIDI calibration
+- **PROGRAM + 2 VOICE at power-on:** WAV firmware updater
