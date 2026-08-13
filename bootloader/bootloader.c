@@ -25,6 +25,7 @@
 #define APP_LIMIT_BYTES        0x7000U
 #define UPDATE_ADC_CHANNEL     1U          /* PC1 / ADC1 / CLOCK jack */
 #define BUTTON_PIN_MASK        _BV(PC5)    /* active low */
+#define VOICE_SWITCH_MASK      _BV(PD2)    /* HIGH=1 VOICE, LOW=2 VOICE */
 #define STATUS_LED_MASK        _BV(PC3)    /* lower red */
 #define GATE1_MASK             _BV(PC2)
 #define GATE2_MASK             _BV(PC4)
@@ -37,14 +38,14 @@
 #define MAX_PACKET_DATA        DATA_CHUNK_SIZE
 
 /* Timer1 runs at F_CPU/8 = 2 MHz, 0.5 us/tick. */
-#define PREAMBLE_MIN_TICKS     160U   /* 80 us */
-#define PREAMBLE_MAX_TICKS     360U   /* 180 us */
+#define PREAMBLE_MIN_TICKS     120U   /* 60 us */
+#define PREAMBLE_MAX_TICKS     440U   /* 220 us */
 #define SYNC_MIN_TICKS        3200U   /* 1.6 ms */
 #define BIT_ZERO_ONE_TICKS     750U   /* threshold between 250/500 us */
-#define BIT_MIN_TICKS          350U
+#define BIT_MIN_TICKS          240U
 #define BIT_MAX_TICKS         1250U
 #define EDGE_TIMEOUT_TICKS    6000U   /* 3 ms */
-#define MIN_PREAMBLE_EDGES       20U
+#define MIN_PREAMBLE_EDGES        8U
 #define MIN_ADC_RANGE              6U
 
 /* EEPROM byte is intentionally separate from the application settings block.
@@ -53,9 +54,8 @@
 #define EEPROM_BOOT_STATUS_ADDR  96U
 #define EEPROM_PAGE_COUNT_LO      97U
 #define EEPROM_PAGE_COUNT_HI      98U
-#define EEPROM_FIRST_PKT_TYPE     99U
-#define EEPROM_FIRST_PKT_SEQ_LO  100U
-#define EEPROM_FIRST_PKT_SEQ_HI  101U
+#define EEPROM_APP_HANDOFF_ADDR  102U
+#define APP_HANDOFF_MAGIC        0x5AU
 #define BOOT_STATUS_VALID        0xA5U
 #define BOOT_STATUS_UPDATING     0x42U
 
@@ -67,6 +67,7 @@ static uint16_t manifest_size;
 static uint32_t manifest_crc32;
 static uint8_t update_active;
 static uint8_t page_buffer[SPM_PAGESIZE];
+
 
 static void jump_to_application(void) __attribute__((noreturn));
 
@@ -114,6 +115,9 @@ static void io_init(void)
     DDRC &= (uint8_t)~BUTTON_PIN_MASK;
     PORTC |= BUTTON_PIN_MASK;
 
+    DDRD &= (uint8_t)~VOICE_SWITCH_MASK;
+    PORTD |= VOICE_SWITCH_MASK;
+
     DDRC |= STATUS_LED_MASK;
     status_off();
 
@@ -126,6 +130,11 @@ static void io_init(void)
 static uint8_t program_button_held(void)
 {
     return ((PINC & BUTTON_PIN_MASK) == 0U);
+}
+
+static uint8_t two_voice_selected(void)
+{
+    return ((PIND & VOICE_SWITCH_MASK) == 0U);
 }
 
 static void adc_init(void)
@@ -157,14 +166,17 @@ static uint8_t application_present(void)
 
 static void jump_to_application(void)
 {
-    void (*app)(void) = (void (*)(void))0x0000;
     cli();
-    ADCSRA = 0U;
-    TCCR1B = 0U;
-    status_off();
-    gates_safe();
-    wdt_disable();
-    app();
+
+    /*
+     * Do not jump directly from the bootloader's C environment into the
+     * application. Request a one-shot handoff and reset the MCU so the
+     * application begins from clean reset hardware state.
+     */
+    eeprom_update_byte((uint8_t *)EEPROM_APP_HANDOFF_ADDR,
+                       APP_HANDOFF_MAGIC);
+
+    wdt_enable(WDTO_15MS);
     for(;;) { }
 }
 
@@ -342,13 +354,18 @@ static uint8_t receive_packet(uint8_t *type, uint16_t *sequence,
 
     if(!receive_byte(type)) return 0U;
     crc = crc16_update(crc, *type);
+
     if(!receive_byte(&seq_lo)) return 0U;
     crc = crc16_update(crc, seq_lo);
+
     if(!receive_byte(&seq_hi)) return 0U;
     crc = crc16_update(crc, seq_hi);
+
     *sequence = (uint16_t)seq_lo | ((uint16_t)seq_hi << 8);
+
     if(!receive_byte(&len)) return 0U;
     crc = crc16_update(crc, len);
+
     if(len > MAX_PACKET_DATA) return 0U;
 
     for(i = 0U; i < len; ++i) {
@@ -356,8 +373,11 @@ static uint8_t receive_packet(uint8_t *type, uint16_t *sequence,
         crc = crc16_update(crc, payload[i]);
     }
 
-    if(!receive_byte(&rx_crc_lo) || !receive_byte(&rx_crc_hi)) return 0U;
-    if(crc != ((uint16_t)rx_crc_lo | ((uint16_t)rx_crc_hi << 8))) return 0U;
+    if(!receive_byte(&rx_crc_lo) ||
+       !receive_byte(&rx_crc_hi)) return 0U;
+
+    if(crc != ((uint16_t)rx_crc_lo |
+              ((uint16_t)rx_crc_hi << 8))) return 0U;
 
     *length = len;
     return 1U;
@@ -401,6 +421,23 @@ int main(void)
     MCUSR = 0U;
     wdt_disable();
     cli();
+    /*
+     * A one-shot handoff means the previous bootloader invocation deliberately
+     * reset the MCU so the application can start from true reset state.
+     * Clear the marker before jumping so future resets return to normal
+     * bootloader decision logic.
+     */
+    if(eeprom_read_byte((const uint8_t *)EEPROM_APP_HANDOFF_ADDR) ==
+       APP_HANDOFF_MAGIC) {
+        void (*app)(void) = (void (*)(void))0x0000;
+
+        eeprom_update_byte((uint8_t *)EEPROM_APP_HANDOFF_ADDR, 0xFFU);
+        cli();
+        wdt_disable();
+        app();
+        for(;;) { }
+    }
+
     io_init();
     adc_init();
     timer_init();
@@ -408,37 +445,31 @@ int main(void)
 
     boot_status = eeprom_read_byte((const uint8_t *)EEPROM_BOOT_STATUS_ADDR);
 
-    /* First boot after ISP installation: bless the already-present app. */
-    if(boot_status == 0xFFU && application_present() && !program_button_held()) {
-        eeprom_update_byte((uint8_t *)EEPROM_BOOT_STATUS_ADDR, BOOT_STATUS_VALID);
-        jump_to_application();
+    if(boot_status == 0xFFU && application_present()) {
+        eeprom_update_byte((uint8_t *)EEPROM_BOOT_STATUS_ADDR,
+                           BOOT_STATUS_VALID);
+        boot_status = BOOT_STATUS_VALID;
     }
 
-    force_recovery = (uint8_t)(boot_status != BOOT_STATUS_VALID || !application_present());
+    force_recovery =
+        (uint8_t)((boot_status != BOOT_STATUS_VALID) ||
+                  (application_present() == 0U));
 
-    if(!force_recovery && !program_button_held())
-        jump_to_application();
+    if(force_recovery == 0U) {
+        if(program_button_held() == 0U) {
+            jump_to_application();
+        }
 
-    /* Bootloader ready. */
+        if(two_voice_selected() == 0U) {
+            jump_to_application();
+        }
+    }
+
     status_on();
 
-    /* Diagnostic: clear first-valid-packet record for this update attempt. */
-    eeprom_update_byte((uint8_t *)EEPROM_FIRST_PKT_TYPE, 0xFFU);
-    eeprom_update_byte((uint8_t *)EEPROM_FIRST_PKT_SEQ_LO, 0xFFU);
-    eeprom_update_byte((uint8_t *)EEPROM_FIRST_PKT_SEQ_HI, 0xFFU);
 
-    /* Boot behavior:
- *
- *  - Normal power-up: jump directly to the application.
- *  - PROGRAM held: wait forever for update audio.
- *  - Invalid application: recovery mode; wait forever.
- */
-if (!program_button_held() && !force_recovery)
-{
-    jump_to_application();
-}
 
-calibrate_audio(0U);
+    calibrate_audio(0U);
 
     status_off();
 
@@ -448,7 +479,7 @@ calibrate_audio(0U);
 
         wait_packet_sync();
 
-        /* Diagnostic: GATE1/yellow = packet sync detected. */
+        /* Yellow 1: packet synchronization detected. */
         PORTC |= GATE1_MASK;
 
         if(!receive_packet(&type, &sequence, &length, payload)) {
@@ -460,16 +491,9 @@ calibrate_audio(0U);
             continue;
         }
 
-        /* Diagnostic: GATE2/yellow = complete CRC-valid packet decoded. */
+        /* Yellow 2: complete CRC-valid packet decoded. */
         PORTC |= GATE2_MASK;
 
-        if(eeprom_read_byte((const uint8_t *)EEPROM_FIRST_PKT_TYPE) == 0xFFU) {
-            eeprom_update_byte((uint8_t *)EEPROM_FIRST_PKT_TYPE, type);
-            eeprom_update_byte((uint8_t *)EEPROM_FIRST_PKT_SEQ_LO,
-                               (uint8_t)(sequence & 0xFFU));
-            eeprom_update_byte((uint8_t *)EEPROM_FIRST_PKT_SEQ_HI,
-                               (uint8_t)(sequence >> 8));
-        }
 
         if(type == PACKET_MANIFEST) {
             if(!parse_manifest(payload, length)) {
