@@ -2,11 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP="$ROOT/build/midi_cv_x.hex"
+APP="$ROOT/firmware/midi_cv_x.hex"
 BOOT="$ROOT/bootloader/midicvx_bootloader.hex"
 
 echo "========================================"
-echo " MIDICVX DIP ATmega328P PROGRAMMER"
+echo " MIDICVX ATmega328P PROGRAMMER"
+echo " DIP or SMD package"
 echo "========================================"
 
 [[ -f "$APP" ]] || { echo "ERROR: Missing $APP"; exit 1; }
@@ -25,7 +26,7 @@ echo "Detected: $SIG"
 
 if [[ "$SIG" != "1E 95 0F" ]]; then
     echo
-    echo "ERROR: Expected DIP ATmega328P signature 1E 95 0F."
+    echo "ERROR: Expected ATmega328P signature 1E 95 0F."
     echo "Nothing has been written."
     exit 1
 fi
@@ -43,7 +44,7 @@ avrdude -c usbasp -p m328p -B 100 \
 
 echo
 echo "========================================"
-echo " SUCCESS - DIP ATmega328P programmed"
+echo " SUCCESS - ATmega328P programmed"
 echo " Fuses: FF / D8 / FD"
 echo " WAV bootloader installed"
 echo "========================================"
