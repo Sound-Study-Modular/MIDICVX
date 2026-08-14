@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP="$ROOT/build/midi_cv_x.hex"
+APP="$ROOT/firmware/midi_cv_x.hex"
 BOOT="$ROOT/bootloader/midicvx_bootloader.hex"
 
 echo "========================================"
